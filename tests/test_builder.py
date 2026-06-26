@@ -104,6 +104,49 @@ class TestPaymentBuilder:
         payment = PaymentBuilder().add_destination("bc1qtest").build()
         assert payment.destinations[0].type is None
 
+    def test_set_child_platform_sets_name(self):
+        payment = PaymentBuilder().add_destination("bc1qtest").set_child_platform("Acme").build()
+        assert payment.child_platform.name == "Acme"
+
+    def test_set_child_platform_optional_urls_default_none(self):
+        payment = PaymentBuilder().add_destination("bc1qtest").set_child_platform("Acme").build()
+        assert payment.child_platform.logo_url is None
+        assert payment.child_platform.logo_light_url is None
+
+    def test_set_child_platform_with_urls(self):
+        payment = (
+            PaymentBuilder()
+            .add_destination("bc1qtest")
+            .set_child_platform("Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/logo-light.png")
+            .build()
+        )
+        assert payment.child_platform.logo_url == "https://example.com/logo.png"
+        assert payment.child_platform.logo_light_url == "https://example.com/logo-light.png"
+
+    def test_set_child_platform_returns_builder(self):
+        builder = PaymentBuilder()
+        result = builder.set_child_platform("Acme")
+        assert result is builder
+
+    def test_child_platform_serializes_to_api(self):
+        from branta.v2.serialization import payment_to_api
+        payment = (
+            PaymentBuilder()
+            .add_destination("bc1qtest")
+            .set_child_platform("Acme", logo_url="https://example.com/logo.png")
+            .build()
+        )
+        api = payment_to_api(payment)
+        assert api["child_platform"]["name"] == "Acme"
+        assert api["child_platform"]["logo_url"] == "https://example.com/logo.png"
+        assert "logo_light_url" not in api["child_platform"]
+
+    def test_no_child_platform_omitted_from_api(self):
+        from branta.v2.serialization import payment_to_api
+        payment = PaymentBuilder().add_destination("bc1qtest").build()
+        api = payment_to_api(payment)
+        assert "child_platform" not in api
+
 
 class TestSerializationDestinationType:
     @pytest.mark.parametrize("dest_type,expected", [

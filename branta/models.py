@@ -35,6 +35,7 @@ class Payment:
     platform_logo_url: Optional[str] = None
     platform_logo_light_url: Optional[str] = None
     parent_platform: Optional[Platform] = None
+    child_platform: Optional[Platform] = None
     btc_pay_server_plugin_version: Optional[str] = None
     is_metadata_decrypted: Optional[bool] = None
 
