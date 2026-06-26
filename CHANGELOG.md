@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-06-26
+
+### Added
+- `PaymentBuilder.set_child_platform(name, logo_url, logo_light_url)` — allows master-switch platforms to associate a child platform with a payment on POST
+- `Payment.child_platform` field (optional `Platform`) to hold the child platform data before submission
+- Removed tracked `__pycache__` files and ensured they are covered by `.gitignore`
+
 ## [3.1.0] - 2026-06-25
 
 ### Added

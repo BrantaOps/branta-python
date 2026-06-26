@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "branta"
-version = "3.1.0"
+version = "3.2.0"
 description = "Python SDK for the Branta V2 API — payment destination lookup and registration with zero-knowledge encryption support"
 readme = "README.md"
 license = { text = "MIT" }
