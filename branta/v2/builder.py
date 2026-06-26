@@ -5,7 +5,7 @@ import uuid
 from typing import Optional
 
 from branta.enums import DestinationType
-from branta.models import Destination, Payment
+from branta.models import Destination, Payment, Platform
 
 
 class PaymentBuilder:
@@ -42,6 +42,15 @@ class PaymentBuilder:
 
     def set_platform_logo_url(self, platform_logo_url: str) -> "PaymentBuilder":
         self._payment.platform_logo_url = platform_logo_url
+        return self
+
+    def set_child_platform(
+        self,
+        name: str,
+        logo_url: Optional[str] = None,
+        logo_light_url: Optional[str] = None,
+    ) -> "PaymentBuilder":
+        self._payment.child_platform = Platform(name=name, logo_url=logo_url, logo_light_url=logo_light_url)
         return self
 
     def build(self) -> Payment:

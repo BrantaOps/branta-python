@@ -60,6 +60,15 @@ def payment_to_api(payment: Payment) -> Dict[str, Any]:
         result["platform_logo_url"] = payment.platform_logo_url
     if payment.platform_logo_light_url is not None:
         result["platform_logo_light_url"] = payment.platform_logo_light_url
+    if payment.child_platform is not None:
+        cp: Dict[str, Any] = {}
+        if payment.child_platform.name is not None:
+            cp["name"] = payment.child_platform.name
+        if payment.child_platform.logo_url is not None:
+            cp["logo_url"] = payment.child_platform.logo_url
+        if payment.child_platform.logo_light_url is not None:
+            cp["logo_light_url"] = payment.child_platform.logo_light_url
+        result["child_platform"] = cp
     if payment.btc_pay_server_plugin_version is not None:
         result["btc_pay_server_plugin_version"] = payment.btc_pay_server_plugin_version
     return result
