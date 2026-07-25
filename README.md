@@ -96,6 +96,57 @@ is_valid = await service.is_api_key_valid(BrantaClientOptions(
 ))
 ```
 
+### For parent platforms
+
+Choose a variant based on how API keys are structured. Shared key needs only an API key; per-client keys also require HMAC.
+
+**Shared key — one API key covers all children (Recommended)**
+
+Construct with a single API key; identify the child platform per-payment. Do not include `hmac_secret`.
+
+```python
+options = BrantaClientOptions(
+    base_url=BrantaServerBaseUrl.Production,
+    default_api_key="<shared-api-key>",
+    privacy=PrivacyMode.Strict,
+)
+service = BrantaService(options)
+
+payment = (
+    service.create_payment_builder()
+    .add_destination("bc1q...", DestinationType.BitcoinAddress).set_zk()
+    .set_description("Order #1234")
+    .set_child_platform("ChildBrand", logo_url="https://example.com/logo.png")
+    .build()
+)
+
+result = await service.add_payment(payment)
+```
+
+**Per-client keys — each child has its own API key**
+
+Construct the service with the parent HMAC secret only; pass each child's API key per-call.
+
+```python
+options = BrantaClientOptions(
+    base_url=BrantaServerBaseUrl.Production,
+    hmac_secret="<hmac-secret>",
+    privacy=PrivacyMode.Strict,
+)
+service = BrantaService(options)
+
+payment = (
+    service.create_payment_builder()
+    .add_destination("bc1q...", DestinationType.BitcoinAddress).set_zk()
+    .build()
+)
+
+result = await service.add_payment(
+    payment,
+    BrantaClientOptions(default_api_key="<child-api-key>"),
+)
+```
+
 ### Per-call option overrides
 
 Every public method accepts an optional `BrantaClientOptions` parameter that overrides the service's default options for that call only:
