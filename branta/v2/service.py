@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from urllib.parse import quote
 
 from branta.enums import DestinationType, PrivacyMode
-from branta.exceptions import BrantaPaymentException
+from branta.exceptions import BrantaPaymentException, BrantaPaymentExceptionReason
 from branta.extensions import (
     get_base_url,
     get_hash_zk_type,
@@ -19,6 +19,15 @@ from branta.v2.client import BrantaClient
 from branta.v2.encryption import AesEncryptionService
 from branta.v2.parser import QRParser
 from branta.v2.secret_generator import GuidSecretGenerator
+
+
+def _addresses_match(a: str, b: str) -> bool:
+    def is_bech32(v: str) -> bool:
+        return v.lower().startswith("bc1")
+
+    if is_bech32(a) and is_bech32(b):
+        return a.lower() == b.lower()
+    return a == b
 
 
 class BrantaService:
@@ -51,10 +60,15 @@ class BrantaService:
                 for d in parser.destinations
                 if get_hash_zk_type(d.value) is not None
             ]
+            on_chain_address = next(
+                (d.value for d in parser.destinations if d.type == DestinationType.BitcoinAddress),
+                None,
+            )
             return await self._get_payments_for_zk(
                 parser.on_chain_encryption_text,
                 parser.on_chain_encryption_secret,
                 additional_values,
+                on_chain_address,
                 options,
             )
 
@@ -192,13 +206,16 @@ class BrantaService:
         lookup_value: str,
         encryption_key: Optional[str],
         additional_hash_values: List[str],
+        expected_on_chain_address: Optional[str],
         options: Optional[BrantaClientOptions],
     ) -> PaymentsResult:
         payments = await self._client.get_payments(lookup_value, options)
 
         keys: Dict[str, str] = {}
         for payment in payments:
-            await self._decrypt_destinations(payment, lookup_value, encryption_key, None, keys)
+            await self._decrypt_destinations(
+                payment, lookup_value, encryption_key, None, keys, expected_on_chain_address
+            )
             for value in additional_hash_values:
                 await self._decrypt_hash_zk_destinations(payment, value, keys)
 
@@ -233,6 +250,7 @@ class BrantaService:
         encryption_key: Optional[str],
         hash_zk_type: Optional[DestinationType],
         keys: Dict[str, str],
+        expected_on_chain_address: Optional[str] = None,
     ) -> None:
         for destination in payment.destinations:
             destination.is_encrypted = bool(destination.is_zk)
@@ -243,13 +261,22 @@ class BrantaService:
                 if encryption_key is None:
                     continue
                 try:
-                    destination.value = await self._aes_encryption.decrypt(destination.value, encryption_key)
-                    destination.is_encrypted = False
-                    if destination.zk_id is not None and destination.zk_id not in keys:
-                        keys[destination.zk_id] = encryption_key
-                    await self._try_decrypt_metadata(payment, destination, encryption_key)
+                    decrypted = await self._aes_encryption.decrypt(destination.value, encryption_key)
                 except Exception:
-                    pass
+                    continue
+
+                if expected_on_chain_address is not None and not _addresses_match(decrypted, expected_on_chain_address):
+                    raise BrantaPaymentException(
+                        "The Bitcoin address in the QR code does not match the address verified by Branta. "
+                        "The QR code may have been tampered with.",
+                        BrantaPaymentExceptionReason.Tampered,
+                    )
+
+                destination.value = decrypted
+                destination.is_encrypted = False
+                if destination.zk_id is not None and destination.zk_id not in keys:
+                    keys[destination.zk_id] = encryption_key
+                await self._try_decrypt_metadata(payment, destination, encryption_key)
             elif hash_zk_type is not None and destination.type == hash_zk_type:
                 key = to_normalized_hash(destination_value)
                 try:
