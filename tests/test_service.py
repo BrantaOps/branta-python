@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from branta.enums import BrantaServerBaseUrl, DestinationType, PrivacyMode
-from branta.exceptions import BrantaPaymentException
+from branta.exceptions import BrantaPaymentException, BrantaPaymentExceptionReason
 from branta.extensions import to_normalized_hash
 from branta.models import Payment
 from branta.options import BrantaClientOptions
@@ -235,6 +235,107 @@ class TestGetPaymentsByQrCode:
         assert result.payments[0].destinations[1].value == DECRYPTED_BOLT11
         aes_mock.decrypt.assert_any_await(ENCRYPTED_BITCOIN_ADDRESS, SECRET)
         aes_mock.decrypt.assert_any_await(ENCRYPTED_BOLT11, BOLT11_HASH)
+
+
+SWAPPED_ADDRESS = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
+BECH32_ADDRESS = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+ENCRYPTED_BECH32_ADDRESS = "encrypted-bech32-address"
+
+
+def zk_bech32_payment() -> Payment:
+    return PaymentBuilder().add_destination(ENCRYPTED_BECH32_ADDRESS, DestinationType.BitcoinAddress).set_zk().build()
+
+
+# ===== get_payments_by_qr_code address binding =====
+
+class TestGetPaymentsByQrCodeAddressBinding:
+    async def test_swapped_address_rejects(self, service, client_mock, aes_mock):
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [zk_bitcoin_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"bitcoin:{SWAPPED_ADDRESS}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+        with pytest.raises(BrantaPaymentException) as exc_info:
+            await service.get_payments_by_qr_code(qr)
+        assert exc_info.value.reason == BrantaPaymentExceptionReason.Tampered
+
+    async def test_matching_address_does_not_throw(self, service, client_mock, aes_mock):
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [zk_bitcoin_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"bitcoin:{BITCOIN_ADDRESS}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+        result = await service.get_payments_by_qr_code(qr)
+        assert result.payments[0].destinations[0].value == BITCOIN_ADDRESS
+
+    async def test_uppercase_bech32_qr_matches_lowercase_registered(self, service, client_mock, aes_mock):
+        async def decrypt_side_effect(encrypted_value, secret):
+            if encrypted_value == ENCRYPTED_BECH32_ADDRESS and secret == SECRET:
+                return BECH32_ADDRESS
+            return ""
+        aes_mock.decrypt = AsyncMock(side_effect=decrypt_side_effect)
+
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BECH32_ADDRESS:
+                return [zk_bech32_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"bitcoin:{BECH32_ADDRESS.upper()}?branta_id={ENCRYPTED_BECH32_ADDRESS}&branta_secret={SECRET}"
+        result = await service.get_payments_by_qr_code(qr)
+        assert result.payments[0].destinations[0].value == BECH32_ADDRESS
+
+    async def test_base58_case_mismatch_rejects(self, service, client_mock, aes_mock):
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [zk_bitcoin_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"bitcoin:{BITCOIN_ADDRESS.lower()}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+        with pytest.raises(BrantaPaymentException) as exc_info:
+            await service.get_payments_by_qr_code(qr)
+        assert exc_info.value.reason == BrantaPaymentExceptionReason.Tampered
+
+    async def test_lightning_qr_with_zk_params_no_plain_address_decrypts_without_comparison(
+        self, service, client_mock, aes_mock
+    ):
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [zk_bitcoin_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"lightning:{BOLT11_INVOICE}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+        result = await service.get_payments_by_qr_code(qr)
+        assert result.payments[0].destinations[0].value == BITCOIN_ADDRESS
+
+    async def test_combined_zk_qr_swapped_address_rejects(self, service, client_mock, aes_mock):
+        payment = (
+            PaymentBuilder()
+            .add_destination(ENCRYPTED_BITCOIN_ADDRESS, DestinationType.BitcoinAddress).set_zk()
+            .add_destination(ENCRYPTED_BOLT11, DestinationType.Bolt11).set_zk()
+            .add_destination(ENCRYPTED_ARK_ADDRESS, DestinationType.ArkAddress).set_zk()
+            .build()
+        )
+
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [payment]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = (
+            f"bitcoin:{SWAPPED_ADDRESS}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+            f"&lightning={BOLT11_INVOICE}&ark={ARK_ADDRESS}"
+        )
+        with pytest.raises(BrantaPaymentException) as exc_info:
+            await service.get_payments_by_qr_code(qr)
+        assert exc_info.value.reason == BrantaPaymentExceptionReason.Tampered
 
 
 # ===== get_payments =====

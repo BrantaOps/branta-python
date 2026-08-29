@@ -1,5 +1,5 @@
 from branta.enums import BrantaServerBaseUrl, DestinationType, PrivacyMode
-from branta.exceptions import BrantaPaymentException, QRParseException
+from branta.exceptions import BrantaPaymentException, BrantaPaymentExceptionReason, QRParseException
 from branta.extensions import (
     get_api_key,
     get_base_url,
@@ -22,6 +22,7 @@ __all__ = [
     "DestinationType",
     "PrivacyMode",
     "BrantaPaymentException",
+    "BrantaPaymentExceptionReason",
     "QRParseException",
     "BrantaClientOptions",
     "Payment",
