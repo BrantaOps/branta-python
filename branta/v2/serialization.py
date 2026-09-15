@@ -104,6 +104,17 @@ def payment_from_api(raw: Dict[str, Any]) -> Payment:
             if pp.get("logo_light_url") is not None:
                 parent.logo_light_url = str(pp["logo_light_url"])
             payment.parent_platform = parent
+    if raw.get("child_platform") is not None:
+        cp = raw["child_platform"]
+        if isinstance(cp, dict):
+            child = Platform()
+            if cp.get("name") is not None:
+                child.name = str(cp["name"])
+            if cp.get("logo_url") is not None:
+                child.logo_url = str(cp["logo_url"])
+            if cp.get("logo_light_url") is not None:
+                child.logo_light_url = str(cp["logo_light_url"])
+            payment.child_platform = child
     if raw.get("btc_pay_server_plugin_version") is not None:
         payment.btc_pay_server_plugin_version = str(raw["btc_pay_server_plugin_version"])
     return payment
