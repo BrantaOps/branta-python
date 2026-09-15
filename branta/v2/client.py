@@ -151,13 +151,27 @@ class BrantaClient:
             base_origin = f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}"
         except Exception:
             return
-        for payment in payments:
-            logo_url = payment.platform_logo_url
+
+        def check(logo_url: Optional[str], field_name: str) -> None:
             if not logo_url:
                 return
             try:
                 logo_origin = f"{urlparse(logo_url).scheme}://{urlparse(logo_url).netloc}"
             except Exception:
-                raise BrantaPaymentException("platformLogoUrl domain does not match the configured baseUrl domain")
+                raise BrantaPaymentException(f"{field_name} domain does not match the configured base_url domain")
             if logo_origin != base_origin:
-                raise BrantaPaymentException("platformLogoUrl domain does not match the configured baseUrl domain")
+                raise BrantaPaymentException(f"{field_name} domain does not match the configured base_url domain")
+
+        for payment in payments:
+            check(payment.platform_logo_url, "platform_logo_url")
+            check(payment.platform_logo_light_url, "platform_logo_light_url")
+            check(payment.parent_platform.logo_url if payment.parent_platform else None, "parent_platform.logo_url")
+            check(
+                payment.parent_platform.logo_light_url if payment.parent_platform else None,
+                "parent_platform.logo_light_url",
+            )
+            check(payment.child_platform.logo_url if payment.child_platform else None, "child_platform.logo_url")
+            check(
+                payment.child_platform.logo_light_url if payment.child_platform else None,
+                "child_platform.logo_light_url",
+            )

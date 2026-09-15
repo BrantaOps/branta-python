@@ -39,7 +39,7 @@ pip install -e ".[dev]"
 - **ZK encryption:** Bitcoin addresses use a random secret (GUID); hash-ZK types (bolt11, ark, silent_payment) use a deterministic key from SHA256(normalized value). `add_payment` mutates `payment.destinations[*].value` to the encrypted form before POSTing.
 - **Metadata DEK-envelope:** If a payment has metadata and any ZK destination, a separate DEK is generated, metadata is encrypted with it, and the DEK is encrypted per-destination.
 - **Never surface lookup failures.** Swallow decryption errors; leave `is_encrypted=True` and value unchanged.
-- **Domain validation.** `platform_logo_url` must match `base_url` domain.
+- **Domain validation.** `platform_logo_url`, `platform_logo_light_url`, `parent_platform.logo_url`/`logo_light_url`, and `child_platform.logo_url`/`logo_light_url` must each match `base_url`'s origin. Every payment in a GET response is checked, not just the first.
 
 ## Conventions
 
