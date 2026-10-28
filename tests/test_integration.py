@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import os
 
+import aiohttp
 import pytest
 
 from branta.enums import BrantaServerBaseUrl, PrivacyMode
 from branta.options import BrantaClientOptions
+from branta.v2.client import BrantaClient
 from branta.v2.service import BrantaService
 
 pytestmark = pytest.mark.skipif(
@@ -24,7 +26,10 @@ TIMEOUT = 15
 
 
 def make_service(base_url: BrantaServerBaseUrl, privacy: PrivacyMode) -> BrantaService:
-    return BrantaService(BrantaClientOptions(base_url=base_url, privacy=privacy))
+    options = BrantaClientOptions(base_url=base_url, privacy=privacy)
+    token = os.environ.get("BRANTA_INTEGRATION_METRICS_TOKEN")
+    session = aiohttp.ClientSession(headers={"X-Branta-Integration-Token": token}) if token else None
+    return BrantaService(options, client=BrantaClient(options, session=session))
 
 
 # ===== Production — Loose =====
