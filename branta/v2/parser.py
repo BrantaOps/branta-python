@@ -9,6 +9,20 @@ from branta.extensions import is_ark, is_bolt11, is_silent_payment
 
 _LN_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _ETH_HEX_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+# urllib.parse.urlparse strips these before it reads the scheme: leading C0 controls
+# and spaces, then tab/LF/CR anywhere. It does not strip trailing C0 controls.
+_URLPARSE_LEADING_C0_OR_SPACE = "".join(chr(code) for code in range(0x21))
+
+
+def _normalize_qr_text(qr_text: str) -> str:
+    # Destination typing reads the raw text. It has to see the same string urlparse
+    # does, or a control byte inside "bitcoin:" leaves the address untyped and the
+    # swap check never runs.
+    value = qr_text.strip()
+    value = value.lstrip(_URLPARSE_LEADING_C0_OR_SPACE)
+    for char in ("\t", "\n", "\r"):
+        value = value.replace(char, "")
+    return value
 
 
 def _is_ethereum_address(value: str) -> bool:
@@ -106,7 +120,7 @@ class QRParser:
         self.on_chain_encryption_text: Optional[str] = None
         self.on_chain_encryption_secret: Optional[str] = None
 
-        text = qr_text.strip()
+        text = _normalize_qr_text(qr_text)
 
         try:
             parsed = urlparse(text)
