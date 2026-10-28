@@ -53,6 +53,10 @@ class TestIsArk:
     def test_uppercase_is_ark(self):
         assert is_ark("ARK1TESTADDRESS") is True
 
+    def test_tark1_prefix_is_ark(self):
+        assert is_ark("tark1testaddress") is True
+        assert is_ark("TARK1TESTADDRESS") is True
+
     def test_bitcoin_address_not_ark(self):
         assert is_ark("bc1qtest") is False
 
@@ -77,6 +81,7 @@ class TestGetHashZkType:
 
     def test_ark_returns_ark_type(self):
         assert get_hash_zk_type("ark1testaddress") == DestinationType.ArkAddress
+        assert get_hash_zk_type("tark1testaddress") == DestinationType.ArkAddress
 
     def test_silent_payment_returns_silent_payment_type(self):
         assert get_hash_zk_type("sp1testpayment") == DestinationType.SilentPayment

@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 from branta.enums import DestinationType
-from branta.extensions import is_bolt11, is_silent_payment
+from branta.extensions import is_ark, is_bolt11, is_silent_payment
 
 _LN_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _ETH_HEX_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -27,7 +27,7 @@ def _detect_plain_text_type(value: str) -> Optional[DestinationType]:
         return DestinationType.Bolt12
     if lower.startswith("lnurl"):
         return DestinationType.LnUrl
-    if lower.startswith("ark1"):
+    if is_ark(value):
         return DestinationType.ArkAddress
     if is_silent_payment(value):
         return DestinationType.SilentPayment

@@ -67,7 +67,8 @@ def is_bolt11(value: str) -> bool:
 
 
 def is_ark(value: str) -> bool:
-    return value.lower().startswith("ark1")
+    lower = value.lower()
+    return lower.startswith("ark1") or lower.startswith("tark1")
 
 
 def is_silent_payment(value: str) -> bool:
