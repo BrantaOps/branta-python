@@ -173,6 +173,28 @@ class TestQRParserEdgeCases:
         assert parser.destinations[1].value == "sp1qqwl5p9jhz0000h5zkvlf9gfqv9dl9qjp5ggq5x3fw"
         assert parser.destinations[1].type == DestinationType.SilentPayment
 
+    @pytest.mark.parametrize(
+        "prefix",
+        ["bitcoi\tn:", "bitcoi\nn:", "bitcoi\rn:", "\x01bitcoin:"],
+    )
+    def test_control_char_in_scheme_types_bitcoin_address(self, prefix):
+        parser = QRParser(f"{prefix}1attackeraddr?branta_id=ID1&branta_secret=SEC1")
+        assert parser.is_on_chain_zk() is True
+        assert parser.destination == "1attackeraddr"
+        assert parser.destination_type == DestinationType.BitcoinAddress
+        assert parser.on_chain_encryption_text == "ID1"
+        assert parser.on_chain_encryption_secret == "SEC1"
+
+    def test_tab_inside_address_uses_the_address_urlparse_would_pay(self):
+        parser = QRParser("bitcoin:1attac\tkeraddr?branta_id=ID1&branta_secret=SEC1")
+        assert parser.destination == "1attackeraddr"
+        assert parser.destination_type == DestinationType.BitcoinAddress
+
+    def test_tab_inside_lightning_scheme_still_types_bolt11(self):
+        parser = QRParser("lightnin\tg:lnbc100n1ptest")
+        assert parser.destination == "lnbc100n1ptest"
+        assert parser.destination_type == DestinationType.Bolt11
+
 
 class TestQRParserCombined:
     def test_combined_zk_qr(self):

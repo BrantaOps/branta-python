@@ -261,6 +261,24 @@ class TestGetPaymentsByQrCodeAddressBinding:
             await service.get_payments_by_qr_code(qr)
         assert exc_info.value.reason == BrantaPaymentExceptionReason.Tampered
 
+    @pytest.mark.parametrize(
+        "prefix",
+        ["bitcoi\tn:", "bitcoi\nn:", "bitcoi\rn:", "\x01bitcoin:"],
+    )
+    async def test_control_char_in_scheme_swapped_address_rejects(
+        self, service, client_mock, aes_mock, prefix
+    ):
+        async def get_side_effect(lookup, opts=None, signal=None):
+            if lookup == ENCRYPTED_BITCOIN_ADDRESS:
+                return [zk_bitcoin_payment()]
+            return []
+        client_mock.get_payments = AsyncMock(side_effect=get_side_effect)
+
+        qr = f"{prefix}{SWAPPED_ADDRESS}?branta_id={ENCRYPTED_BITCOIN_ADDRESS}&branta_secret={SECRET}"
+        with pytest.raises(BrantaPaymentException) as exc_info:
+            await service.get_payments_by_qr_code(qr)
+        assert exc_info.value.reason == BrantaPaymentExceptionReason.Tampered
+
     async def test_matching_address_does_not_throw(self, service, client_mock, aes_mock):
         async def get_side_effect(lookup, opts=None, signal=None):
             if lookup == ENCRYPTED_BITCOIN_ADDRESS:
