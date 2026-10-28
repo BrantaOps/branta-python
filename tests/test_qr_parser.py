@@ -30,6 +30,10 @@ class TestQRParserPlainText:
         parser = QRParser("ark1testaddress")
         assert parser.destination_type == DestinationType.ArkAddress
 
+    def test_signet_ark_address_detected(self):
+        parser = QRParser("tark1testaddress")
+        assert parser.destination_type == DestinationType.ArkAddress
+
     def test_silent_payment_detected(self):
         parser = QRParser("sp1testpayment")
         assert parser.destination_type == DestinationType.SilentPayment
