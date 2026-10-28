@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.4] - 2026-10-28
 
 ### Fixed
 - `get_payments_by_qr_code` strips the same control characters as `urlparse` — tab, line feed, and carriage return anywhere, plus leading C0 controls — before it types a QR destination. A control byte inside `bitcoin:` no longer leaves the address untyped, so a swapped address still raises `Tampered`.
