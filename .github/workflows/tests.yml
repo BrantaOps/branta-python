@@ -29,8 +29,6 @@ jobs:
           coverage run -m pytest tests/ --ignore=tests/test_integration.py -v
           coverage report
           coverage xml
-        env:
-          BRANTA_SKIP_INTEGRATION: "1"
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

@@ -355,9 +355,9 @@ async def is_api_key_valid(options: Optional[BrantaClientOptions] = None) -> boo
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ --ignore=tests/test_integration.py     # unit tests
-pytest tests/test_integration.py                     # integration (requires network)
-coverage run -m pytest tests/ --ignore=tests/test_integration.py && coverage report
+pytest tests/                                        # unit tests; live lookups skipped
+BRANTA_RUN_INTEGRATION=1 pytest tests/test_integration.py   # live Guardrail lookups (opt-in)
+coverage run -m pytest tests/ && coverage report
 ```
 
 # Responsible Disclosure
