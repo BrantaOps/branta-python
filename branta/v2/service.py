@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 from urllib.parse import quote
 
@@ -21,13 +22,35 @@ from branta.v2.parser import QRParser
 from branta.v2.secret_generator import GuidSecretGenerator
 
 
+_TAMPERED_MESSAGE = (
+    "The Bitcoin address in the QR code does not match the address verified by Branta. "
+    "The QR code may have been tampered with."
+)
+_BECH32_RE = re.compile(r"^(bc|tb|bcrt)1", re.IGNORECASE)
+
+
 def _addresses_match(a: str, b: str) -> bool:
     def is_bech32(v: str) -> bool:
-        return v.lower().startswith("bc1")
+        return _BECH32_RE.match(v) is not None
 
     if is_bech32(a) and is_bech32(b):
         return a.lower() == b.lower()
     return a == b
+
+
+def _uniform_on_chain_address(parser: QRParser) -> Optional[str]:
+    addresses = [
+        d.value
+        for d in parser.destinations
+        if d.type == DestinationType.BitcoinAddress and d.value.strip() != ""
+    ]
+    if not addresses:
+        return None
+    first = addresses[0]
+    for address in addresses[1:]:
+        if not _addresses_match(first, address):
+            raise BrantaPaymentException(_TAMPERED_MESSAGE, BrantaPaymentExceptionReason.Tampered)
+    return first
 
 
 class BrantaService:
@@ -53,6 +76,11 @@ class BrantaService:
         options: Optional[BrantaClientOptions] = None,
     ) -> PaymentsResult:
         parser = QRParser(qr_text)
+        expected_on_chain_address = _uniform_on_chain_address(parser)
+
+        if parser.has_unverifiable_instruction:
+            lookup = parser.on_chain_encryption_text or parser.destination or ""
+            return PaymentsResult(payments=[], verify_url=self._build_verify_url(options, lookup))
 
         if parser.is_on_chain_zk():
             additional_values = [
@@ -60,15 +88,11 @@ class BrantaService:
                 for d in parser.destinations
                 if get_hash_zk_type(d.value) is not None
             ]
-            on_chain_address = next(
-                (d.value for d in parser.destinations if d.type == DestinationType.BitcoinAddress),
-                None,
-            )
             return await self._get_payments_for_zk(
                 parser.on_chain_encryption_text,
                 parser.on_chain_encryption_secret,
                 additional_values,
-                on_chain_address,
+                expected_on_chain_address,
                 options,
             )
 
@@ -212,25 +236,31 @@ class BrantaService:
         payments = await self._client.get_payments(lookup_value, options)
 
         keys: Dict[str, str] = {}
+        bound: List[Payment] = []
         for payment in payments:
-            await self._decrypt_destinations(
+            on_chain_bound = await self._decrypt_destinations(
                 payment, lookup_value, encryption_key, None, keys, expected_on_chain_address
             )
+            hashes_bound = True
             for value in additional_hash_values:
-                await self._decrypt_hash_zk_destinations(payment, value, keys)
+                if not await self._decrypt_hash_zk_destinations(payment, value, keys):
+                    hashes_bound = False
+            if on_chain_bound and hashes_bound:
+                bound.append(payment)
 
-        return PaymentsResult(payments=payments, verify_url=self._build_verify_url(options, lookup_value, keys))
+        return PaymentsResult(payments=bound, verify_url=self._build_verify_url(options, lookup_value, keys))
 
     async def _decrypt_hash_zk_destinations(
         self,
         payment: Payment,
         plain_value: str,
         keys: Dict[str, str],
-    ) -> None:
+    ) -> bool:
         hash_zk_type = get_hash_zk_type(plain_value)
         if hash_zk_type is None:
-            return
+            return False
         key = to_normalized_hash(plain_value)
+        bound = False
         for destination in payment.destinations:
             if not destination.is_zk or destination.type != hash_zk_type:
                 continue
@@ -240,8 +270,10 @@ class BrantaService:
                 if destination.zk_id is not None and destination.zk_id not in keys:
                     keys[destination.zk_id] = key
                 await self._try_decrypt_metadata(payment, destination, key)
+                bound = True
             except Exception:
                 pass
+        return bound
 
     async def _decrypt_destinations(
         self,
@@ -251,7 +283,8 @@ class BrantaService:
         hash_zk_type: Optional[DestinationType],
         keys: Dict[str, str],
         expected_on_chain_address: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
+        on_chain_bound = expected_on_chain_address is None
         for destination in payment.destinations:
             destination.is_encrypted = bool(destination.is_zk)
             if not destination.is_zk:
@@ -266,12 +299,10 @@ class BrantaService:
                     continue
 
                 if expected_on_chain_address is not None and not _addresses_match(decrypted, expected_on_chain_address):
-                    raise BrantaPaymentException(
-                        "The Bitcoin address in the QR code does not match the address verified by Branta. "
-                        "The QR code may have been tampered with.",
-                        BrantaPaymentExceptionReason.Tampered,
-                    )
+                    raise BrantaPaymentException(_TAMPERED_MESSAGE, BrantaPaymentExceptionReason.Tampered)
 
+                if expected_on_chain_address is not None:
+                    on_chain_bound = True
                 destination.value = decrypted
                 destination.is_encrypted = False
                 if destination.zk_id is not None and destination.zk_id not in keys:
@@ -287,6 +318,7 @@ class BrantaService:
                     await self._try_decrypt_metadata(payment, destination, key)
                 except Exception:
                     pass
+        return on_chain_bound
 
     async def _try_decrypt_metadata(
         self,

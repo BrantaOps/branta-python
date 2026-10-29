@@ -195,6 +195,34 @@ class TestQRParserEdgeCases:
         assert parser.destination == "lnbc100n1ptest"
         assert parser.destination_type == DestinationType.Bolt11
 
+    def test_bip321_bc_and_tb_are_on_chain_addresses(self):
+        parser = QRParser("bitcoin:?bc=bc1qmerchant&tb=tb1qtest")
+        assert [d.value for d in parser.destinations] == ["bc1qmerchant", "tb1qtest"]
+        assert parser.destinations[0].type == DestinationType.BitcoinAddress
+        assert parser.destinations[1].type == DestinationType.BitcoinAddress
+        assert parser.has_unverifiable_instruction is False
+
+    def test_sp_param_adds_silent_payment(self):
+        parser = QRParser("bitcoin:bc1qmerchant?sp=sp1qqexample")
+        assert parser.destinations[1].value == "sp1qqexample"
+        assert parser.destinations[1].type == DestinationType.SilentPayment
+        assert parser.has_unverifiable_instruction is False
+
+    def test_lno_and_pay_are_unverifiable(self):
+        lno = QRParser("bitcoin:bc1qmerchant?lno=lno1qqexample")
+        assert lno.destinations[1].value == "lno1qqexample"
+        assert lno.destinations[1].type == DestinationType.Bolt12
+        assert lno.has_unverifiable_instruction is True
+
+        pay = QRParser("bitcoin:bc1qmerchant?pay=bitcoin:bc1qother")
+        assert pay.has_unverifiable_instruction is True
+        assert [d.value for d in pay.destinations] == ["bc1qmerchant"]
+
+    def test_non_bitcoin_non_hash_zk_path_is_unverifiable(self):
+        assert QRParser("lightning:lnotest").has_unverifiable_instruction is True
+        assert QRParser("lightning:lnbc100n1ptest").has_unverifiable_instruction is False
+        assert QRParser("bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa").has_unverifiable_instruction is False
+
 
 class TestQRParserCombined:
     def test_combined_zk_qr(self):

@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 from branta.enums import DestinationType
-from branta.extensions import is_ark, is_bolt11, is_silent_payment
+from branta.extensions import get_hash_zk_type, is_ark, is_bolt11, is_silent_payment
 
 _LN_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _ETH_HEX_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -119,6 +119,8 @@ class QRParser:
         self.destinations: List[QrDestination] = []
         self.on_chain_encryption_text: Optional[str] = None
         self.on_chain_encryption_secret: Optional[str] = None
+        # A payable instruction this SDK cannot bind to a decrypted destination.
+        self.has_unverifiable_instruction = False
 
         text = _normalize_qr_text(qr_text)
 
@@ -136,7 +138,14 @@ class QRParser:
         if scheme in ("bitcoin", "lightning"):
             dest = _extract_path(text)
             if dest is not None:
-                self.destinations.append(QrDestination(value=dest, type=_get_destination_type(text)))
+                dest_type = _get_destination_type(text)
+                self.destinations.append(QrDestination(value=dest, type=dest_type))
+                if (
+                    dest != ""
+                    and dest_type != DestinationType.BitcoinAddress
+                    and get_hash_zk_type(dest) is None
+                ):
+                    self.has_unverifiable_instruction = True
 
             query = parsed.query
             params = _parse_query_string(query)
@@ -144,21 +153,25 @@ class QRParser:
             self.on_chain_encryption_text = params.get("branta_id")
             self.on_chain_encryption_secret = params.get("branta_secret")
 
-            lightning_value = params.get("lightning")
-            if lightning_value is not None:
-                self.destinations.append(QrDestination(value=lightning_value, type=_detect_plain_text_type(lightning_value)))
+            def add_bindable(value: Optional[str], type: Optional[DestinationType], on_chain: bool) -> None:
+                if value is None:
+                    return
+                self.destinations.append(QrDestination(value=value, type=type))
+                if value != "" and not on_chain and get_hash_zk_type(value) is None:
+                    self.has_unverifiable_instruction = True
 
-            bolt12_value = params.get("bolt12")
-            if bolt12_value is not None:
-                self.destinations.append(QrDestination(value=bolt12_value, type=_detect_plain_text_type(bolt12_value)))
-
-            ark_value = params.get("ark")
-            if ark_value is not None:
-                self.destinations.append(QrDestination(value=ark_value, type=_detect_plain_text_type(ark_value)))
-
-            silent_payment_value = params.get("silent_payment")
-            if silent_payment_value is not None:
-                self.destinations.append(QrDestination(value=silent_payment_value, type=_detect_plain_text_type(silent_payment_value)))
+            for key in ("lightning", "bolt12", "ark", "silent_payment"):
+                value = params.get(key)
+                add_bindable(value, _detect_plain_text_type(value or ""), False)
+            for key in ("bc", "tb"):
+                add_bindable(params.get(key), DestinationType.BitcoinAddress, True)
+            sp_value = params.get("sp")
+            add_bindable(sp_value, _detect_plain_text_type(sp_value or ""), False)
+            lno_value = params.get("lno")
+            lno_type = (_detect_plain_text_type(lno_value) or DestinationType.Bolt12) if lno_value else None
+            add_bindable(lno_value, lno_type, False)
+            if params.get("pay"):
+                self.has_unverifiable_instruction = True
 
             return
 
