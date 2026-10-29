@@ -17,7 +17,7 @@ Feature-parity Python port of the Branta SDK. Mirrors `branta-js` and `branta-do
 - `branta/v2/encryption.py` — `AesEncryption` (static), `AesEncryptionService` (instance wrapper)
 - `branta/v2/secret_generator.py` — `GuidSecretGenerator`
 - `branta/v2/serialization.py` — snake_case JSON serialization helpers
-- `tests/` — mirrors `branta/`; unit tests use mocked client + AES; integration tests hit live endpoints
+- `tests/` — mirrors `branta/`; unit tests use mocked client + AES; integration tests hit live endpoints only when `BRANTA_RUN_INTEGRATION=1`
 
 ## Setup
 
@@ -27,9 +27,9 @@ pip install -e ".[dev]"
 
 ## Commands
 
-- `pytest tests/ --ignore=tests/test_integration.py` — run unit tests (no network)
-- `pytest tests/test_integration.py` — run integration tests (requires network)
-- `coverage run -m pytest tests/ --ignore=tests/test_integration.py && coverage report` — with coverage
+- `pytest tests/` — unit tests; live lookups skipped unless `BRANTA_RUN_INTEGRATION=1`
+- `BRANTA_RUN_INTEGRATION=1 pytest tests/test_integration.py` — live Guardrail lookups
+- `coverage run -m pytest tests/ && coverage report` — with coverage
 - `pip install -e .` / `pip publish` — publish to PyPI (requires `twine`)
 
 ## Key behaviors to preserve

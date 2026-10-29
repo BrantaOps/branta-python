@@ -1,9 +1,8 @@
 """
 Integration tests against live Branta endpoints.
 
-Run with: pytest tests/test_integration.py -v
-These tests require network access. They are skipped when BRANTA_SKIP_INTEGRATION
-is set to any value, and will be automatically skipped if aiohttp is not installed.
+Skipped unless BRANTA_RUN_INTEGRATION=1 — local `pytest` and PR CI must not hit Guardrail.
+Run with: BRANTA_RUN_INTEGRATION=1 pytest tests/test_integration.py -v
 """
 from __future__ import annotations
 
@@ -18,8 +17,8 @@ from branta.v2.client import BrantaClient
 from branta.v2.service import BrantaService
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("BRANTA_SKIP_INTEGRATION") is not None,
-    reason="Integration tests skipped (BRANTA_SKIP_INTEGRATION set)",
+    os.environ.get("BRANTA_RUN_INTEGRATION") != "1",
+    reason="Live lookups skipped unless BRANTA_RUN_INTEGRATION=1",
 )
 
 TIMEOUT = 15
