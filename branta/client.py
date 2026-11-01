@@ -57,9 +57,7 @@ class BrantaClient:
         self,
         destination_value: str,
         options: Optional[BrantaApiOptions] = None,
-        signal: None = None,
     ) -> List[Payment]:
-        del signal
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=False)
         url = f"{base_url}/v2/payments/{_encode_uri_component(destination_value)}"
@@ -88,9 +86,7 @@ class BrantaClient:
         self,
         payment: Payment,
         options: Optional[BrantaApiOptions] = None,
-        signal: None = None,
     ) -> Optional[Payment]:
-        del signal
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=True)
         headers["Content-Type"] = "application/json"
@@ -110,20 +106,13 @@ class BrantaClient:
     async def is_api_key_valid(
         self,
         options: Optional[BrantaApiOptions] = None,
-        signal: None = None,
     ) -> bool:
-        del signal
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=True)
 
         session = await self._get_session()
         async with session.get(f"{base_url}/v2/api-keys/health-check", headers=headers) as response:
             return response.ok
-
-    async def close(self) -> None:
-        if self._session is not None:
-            await self._session.close()
-            self._session = None
 
     def _build_headers(self, options: Optional[BrantaApiOptions], require_api_key: bool) -> dict:
         headers: dict = {}

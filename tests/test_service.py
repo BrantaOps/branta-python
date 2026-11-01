@@ -27,15 +27,15 @@ class FakeClient:
         self.post_error: Exception | None = None
         self.post_result: Payment | None | str = "echo"
 
-    async def get_payments(self, destination_value: str, options=None, signal=None):
-        del options, signal
+    async def get_payments(self, destination_value: str, options=None):
+        del options
         self.gets.append(destination_value)
         if self.get_error is not None:
             raise self.get_error
         return self.payments
 
-    async def post_payment(self, payment: Payment, options=None, signal=None):
-        del options, signal
+    async def post_payment(self, payment: Payment, options=None):
+        del options
         self.posts.append(payment)
         if self.post_error is not None:
             raise self.post_error
@@ -43,8 +43,8 @@ class FakeClient:
             return payment
         return self.post_result
 
-    async def is_api_key_valid(self, options=None, signal=None) -> bool:
-        del options, signal
+    async def is_api_key_valid(self, options=None) -> bool:
+        del options
         return True
 
 
