@@ -180,6 +180,38 @@ class TestVerify:
         assert client.gets == [ciphertext]
         assert f"#k-bolt-1={key}" in result.verify_url
 
+    async def test_bolt11_decrypting_to_a_different_invoice_is_tampered(self):
+        key = to_normalized_hash(INVOICE)
+        attacker = "lnbc1attacker"
+        ciphertext = await AesEncryption.encrypt(attacker, key)
+        client = FakeClient()
+        client.payments = [
+            Payment(
+                destinations=[
+                    Destination(value="copied-lookup", type=DestinationType.BitcoinAddress, id="btc"),
+                    Destination(value=ciphertext, type=DestinationType.Bolt11, id="bolt"),
+                ]
+            )
+        ]
+        result = await service(client).verify(f"lightning:{INVOICE}")
+
+        assert result.status == VerifyStatus.Tampered
+        assert result.payments is None
+        assert "#k-" not in result.verify_url
+
+    async def test_bolt11_match_is_case_insensitive(self):
+        key = to_normalized_hash(INVOICE)
+        ciphertext = await AesEncryption.encrypt(INVOICE.lower(), key, True)
+        client = FakeClient()
+        client.payments = [
+            Payment(destinations=[Destination(value=ciphertext, type=DestinationType.Bolt11, id="bolt-1")])
+        ]
+        result = await service(client).verify(f"lightning:{INVOICE.upper()}")
+
+        assert result.status == VerifyStatus.Match
+        assert result.payments is not None
+        assert result.payments[0].destinations[0].value == INVOICE.lower()
+
     async def test_bolt11_hit_that_does_not_decrypt_is_unknown(self):
         client = FakeClient()
         client.payments = [

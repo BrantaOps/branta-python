@@ -170,14 +170,17 @@ class BrantaService:
             if destination.is_encrypted is False or destination.type != derived_type:
                 continue
             try:
-                destination.value = await self._aes_encryption.decrypt(destination.value, key)
-                destination.is_encrypted = False
-                if destination.id is not None and destination.id not in keys:
-                    keys[destination.id] = key
-                await self._try_decrypt_metadata(payment, destination, key)
-                bound = True
+                decrypted = await self._aes_encryption.decrypt(destination.value, key)
             except Exception:
-                pass
+                continue
+            if decrypted.lower() != plain_value.lower():
+                raise TamperedError()
+            destination.value = decrypted
+            destination.is_encrypted = False
+            if destination.id is not None and destination.id not in keys:
+                keys[destination.id] = key
+            await self._try_decrypt_metadata(payment, destination, key)
+            bound = True
         return bound
 
     async def _lookup_by_derived_key(
