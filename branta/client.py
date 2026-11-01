@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import time
 from typing import List, Optional
-from urllib.parse import urlparse, quote
+from urllib.parse import quote, urlparse
 
 import aiohttp
 
-from branta.exceptions import BrantaPaymentException
+from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_api_key, get_base_url, get_hmac_secret
 from branta.models import Payment
-from branta.options import BrantaClientOptions
-from branta.v2.serialization import payment_from_api, payment_to_api
+from branta.options import BrantaApiOptions
+from branta.serialization import payment_from_api, payment_to_api
 
-_STATUS_TEXT: dict = {
+_STATUS_TEXT = {
     400: "BadRequest",
     401: "Unauthorized",
     403: "Forbidden",
@@ -34,10 +35,14 @@ def _hmac_sha256_hex(secret: str, message: str) -> str:
     return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _encode_uri_component(value: str) -> str:
+    return quote(value, safe="-_.!~*'()")
+
+
 class BrantaClient:
     def __init__(
         self,
-        default_options: Optional[BrantaClientOptions] = None,
+        default_options: Optional[BrantaApiOptions] = None,
         session: Optional[aiohttp.ClientSession] = None,
     ) -> None:
         self._default_options = default_options
@@ -51,43 +56,41 @@ class BrantaClient:
     async def get_payments(
         self,
         destination_value: str,
-        options: Optional[BrantaClientOptions] = None,
-        signal: None = None,
+        options: Optional[BrantaApiOptions] = None,
     ) -> List[Payment]:
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=False)
-        encoded = quote(destination_value, safe="")
-        url = f"{base_url}/v2/payments/{encoded}"
+        url = f"{base_url}/v2/payments/{_encode_uri_component(destination_value)}"
 
         session = await self._get_session()
         try:
             async with session.get(url, headers=headers) as response:
-                if not response.ok:
+                if response.status == 404:
                     return []
+                if not response.ok:
+                    raise IncompleteError(_STATUS_TEXT.get(response.status, str(response.status)))
                 text = await response.text()
-                if not text:
+                if len(text) == 0:
                     return []
                 parsed = json.loads(text)
-                if not isinstance(parsed, list):
-                    return []
-                payments = [payment_from_api(item) for item in parsed]
+                raw_list = parsed if isinstance(parsed, list) else []
+                payments = [payment_from_api(item) for item in raw_list]
                 self._verify_logo_urls(base_url, payments)
                 return payments
-        except BrantaPaymentException:
+        except (BrantaPaymentException, IncompleteError, asyncio.CancelledError):
             raise
-        except Exception:
-            return []
+        except Exception as exc:
+            raise IncompleteError(str(exc)) from exc
 
     async def post_payment(
         self,
         payment: Payment,
-        options: Optional[BrantaClientOptions] = None,
-        signal: None = None,
+        options: Optional[BrantaApiOptions] = None,
     ) -> Optional[Payment]:
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=True)
         headers["Content-Type"] = "application/json"
-        body = json.dumps(payment_to_api(payment))
+        body = json.dumps(payment_to_api(payment), separators=(",", ":"))
 
         self._apply_hmac_headers(headers, base_url, body, options)
 
@@ -102,25 +105,16 @@ class BrantaClient:
 
     async def is_api_key_valid(
         self,
-        options: Optional[BrantaClientOptions] = None,
-        signal: None = None,
+        options: Optional[BrantaApiOptions] = None,
     ) -> bool:
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=True)
 
         session = await self._get_session()
-        try:
-            async with session.get(f"{base_url}/v2/api-keys/health-check", headers=headers) as response:
-                return response.ok
-        except Exception:
-            return False
+        async with session.get(f"{base_url}/v2/api-keys/health-check", headers=headers) as response:
+            return response.ok
 
-    async def close(self) -> None:
-        if self._session is not None:
-            await self._session.close()
-            self._session = None
-
-    def _build_headers(self, options: Optional[BrantaClientOptions], require_api_key: bool) -> dict:
+    def _build_headers(self, options: Optional[BrantaApiOptions], require_api_key: bool) -> dict:
         headers: dict = {}
         if require_api_key:
             api_key = get_api_key(self._default_options, options)
@@ -134,7 +128,7 @@ class BrantaClient:
         headers: dict,
         base_url: str,
         body: str,
-        options: Optional[BrantaClientOptions],
+        options: Optional[BrantaApiOptions],
     ) -> None:
         hmac_secret = get_hmac_secret(self._default_options, options)
         if hmac_secret is None:
@@ -148,7 +142,8 @@ class BrantaClient:
 
     def _verify_logo_urls(self, base_url: str, payments: List[Payment]) -> None:
         try:
-            base_origin = f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}"
+            parsed = urlparse(base_url)
+            base_origin = f"{parsed.scheme}://{parsed.netloc}"
         except Exception:
             return
 
@@ -156,11 +151,14 @@ class BrantaClient:
             if not logo_url:
                 return
             try:
-                logo_origin = f"{urlparse(logo_url).scheme}://{urlparse(logo_url).netloc}"
-            except Exception:
-                raise BrantaPaymentException(f"{field_name} domain does not match the configured base_url domain")
+                logo = urlparse(logo_url)
+                logo_origin = f"{logo.scheme}://{logo.netloc}"
+            except Exception as exc:
+                raise BrantaPaymentException(
+                    f"{field_name} domain does not match the configured API domain"
+                ) from exc
             if logo_origin != base_origin:
-                raise BrantaPaymentException(f"{field_name} domain does not match the configured base_url domain")
+                raise BrantaPaymentException(f"{field_name} domain does not match the configured API domain")
 
         for payment in payments:
             check(payment.platform_logo_url, "platform_logo_url")

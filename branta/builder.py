@@ -13,22 +13,14 @@ class PaymentBuilder:
         self._payment = Payment()
 
     def add_destination(self, address: str, type: Optional[DestinationType] = None) -> "PaymentBuilder":
-        destination = Destination(value=address, is_zk=False)
+        destination = Destination(value=address, id=str(uuid.uuid4()))
         if type is not None:
             destination.type = type
         self._payment.destinations.append(destination)
         return self
 
-    def set_zk(self) -> "PaymentBuilder":
-        if self._payment.destinations:
-            destination = self._payment.destinations[-1]
-            destination.is_zk = True
-            destination.zk_id = str(uuid.uuid4())
-        return self
-
     def set_description(self, description: str) -> "PaymentBuilder":
-        self._payment.description = description
-        return self
+        return self.add_metadata("description", description)
 
     def add_metadata(self, key: str, value: str) -> "PaymentBuilder":
         metadata_map: dict = json.loads(self._payment.metadata) if self._payment.metadata else {}

@@ -3,17 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from branta.enums import DestinationType
+from branta.enums import DestinationType, VerifyStatus
 
 
 @dataclass
 class Destination:
     value: str
     is_primary: bool = False
-    is_zk: bool = False
     is_encrypted: Optional[bool] = None
     type: Optional[DestinationType] = None
-    zk_id: Optional[str] = None
+    id: Optional[str] = None
     encrypted_dek: Optional[str] = None
 
 
@@ -36,19 +35,14 @@ class Payment:
     platform_logo_light_url: Optional[str] = None
     parent_platform: Optional[Platform] = None
     child_platform: Optional[Platform] = None
-    btc_pay_server_plugin_version: Optional[str] = None
     is_metadata_decrypted: Optional[bool] = None
-
-    def get_default_value(self) -> str:
-        if not self.destinations:
-            raise ValueError("Payment has no destinations")
-        return self.destinations[0].value
 
 
 @dataclass
-class PaymentsResult:
-    payments: List[Payment]
+class VerifyResult:
+    status: VerifyStatus
     verify_url: str
+    payments: Optional[List[Payment]] = None
 
 
 @dataclass

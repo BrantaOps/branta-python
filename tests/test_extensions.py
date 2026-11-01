@@ -1,8 +1,8 @@
 import pytest
 
-from branta.enums import BrantaServerBaseUrl, DestinationType
+from branta.enums import BrantaEnvironment, DestinationType
 from branta.extensions import (
-    get_hash_zk_type,
+    get_derived_key_type,
     get_url,
     is_ark,
     is_bolt11,
@@ -14,13 +14,13 @@ from branta.extensions import (
 
 class TestGetUrl:
     def test_localhost(self):
-        assert get_url(BrantaServerBaseUrl.Localhost) == "http://localhost:3000"
+        assert get_url(BrantaEnvironment.Localhost) == "http://localhost:3000"
 
     def test_production(self):
-        assert get_url(BrantaServerBaseUrl.Production) == "https://guardrail.branta.pro"
+        assert get_url(BrantaEnvironment.Production) == "https://guardrail.branta.pro"
 
     def test_staging(self):
-        assert get_url(BrantaServerBaseUrl.Staging) == "https://staging.guardrail.branta.pro"
+        assert get_url(BrantaEnvironment.Staging) == "https://staging.guardrail.branta.pro"
 
 
 class TestIsBolt11:
@@ -77,20 +77,20 @@ class TestIsSilentPayment:
 
 class TestGetHashZkType:
     def test_bolt11_returns_bolt11_type(self):
-        assert get_hash_zk_type("lnbc100n1ptest") == DestinationType.Bolt11
+        assert get_derived_key_type("lnbc100n1ptest") == DestinationType.Bolt11
 
     def test_ark_returns_ark_type(self):
-        assert get_hash_zk_type("ark1testaddress") == DestinationType.ArkAddress
-        assert get_hash_zk_type("tark1testaddress") == DestinationType.ArkAddress
+        assert get_derived_key_type("ark1testaddress") == DestinationType.ArkAddress
+        assert get_derived_key_type("tark1testaddress") == DestinationType.ArkAddress
 
     def test_silent_payment_returns_silent_payment_type(self):
-        assert get_hash_zk_type("sp1testpayment") == DestinationType.SilentPayment
+        assert get_derived_key_type("sp1testpayment") == DestinationType.SilentPayment
 
     def test_bitcoin_address_returns_none(self):
-        assert get_hash_zk_type("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") is None
+        assert get_derived_key_type("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") is None
 
     def test_random_string_returns_none(self):
-        assert get_hash_zk_type("random-string") is None
+        assert get_derived_key_type("random-string") is None
 
 
 class TestToNormalizedHash:
