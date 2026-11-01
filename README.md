@@ -14,8 +14,7 @@ pip install branta
 
 ```python
 import asyncio
-from branta import BrantaEnvironment, BrantaService, VerifyStatus
-from branta.options import BrantaApiOptions
+from branta import BrantaApiOptions, BrantaEnvironment, BrantaService, VerifyStatus
 
 service = BrantaService(BrantaApiOptions(environment=BrantaEnvironment.Production))
 
@@ -49,8 +48,7 @@ A 404 is `unknown`. 5xx, 429, or no network is `incomplete`.
 
 ```python
 import asyncio
-from branta import BrantaEnvironment, BrantaService, DestinationType
-from branta.options import BrantaApiOptions
+from branta import BrantaApiOptions, BrantaEnvironment, BrantaService, DestinationType
 
 service = BrantaService(
     BrantaApiOptions(environment=BrantaEnvironment.Production, api_key="<api-key>")
