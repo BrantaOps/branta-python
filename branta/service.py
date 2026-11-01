@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from urllib.parse import quote
 
 from branta.enums import DestinationType, VerifyStatus
-from branta.exceptions import BrantaPaymentException, BrantaPaymentExceptionReason, IncompleteError
+from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_base_url, get_derived_key_type, to_normalized_hash, to_url_fragment
 from branta.models import AddPaymentResult, Destination, Payment, Platform, VerifyResult
 from branta.options import BrantaApiOptions
@@ -17,9 +17,6 @@ from branta.encryption import AesEncryptionService
 from branta.parser import QRParser, detect_destination_type
 from branta.secret_generator import GuidSecretGenerator
 from branta.serialization import fold_description_into_metadata, lift_description_from_metadata
-
-_CRYPTO_UNAVAILABLE = "encryption is not available"
-
 
 class TamperedError(Exception):
     pass
@@ -179,14 +176,8 @@ class BrantaService:
                     keys[destination.id] = key
                 await self._try_decrypt_metadata(payment, destination, key)
                 bound = True
-            except BrantaPaymentException:
-                raise
-            except Exception as err:
-                if _CRYPTO_UNAVAILABLE in str(err):
-                    raise BrantaPaymentException(
-                        "Unable to verify this payment: encryption is not available in this environment.",
-                        BrantaPaymentExceptionReason.CryptoUnavailable,
-                    ) from err
+            except Exception:
+                pass
         return bound
 
     async def _lookup_by_derived_key(
@@ -224,14 +215,7 @@ class BrantaService:
                 continue
             try:
                 decrypted = await self._aes_encryption.decrypt(destination.value, encryption_key)
-            except BrantaPaymentException:
-                raise
-            except Exception as err:
-                if _CRYPTO_UNAVAILABLE in str(err):
-                    raise BrantaPaymentException(
-                        "Unable to verify this payment: encryption is not available in this environment.",
-                        BrantaPaymentExceptionReason.CryptoUnavailable,
-                    ) from err
+            except Exception:
                 continue
             if expected_on_chain_address is not None and not _addresses_match(decrypted, expected_on_chain_address):
                 raise TamperedError()

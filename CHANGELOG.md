@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **BREAKING:** `PrivacyMode` and the `privacy` option. Every destination is encrypted. On-chain lookups need `branta_id` / `branta_secret`. bolt11, Ark, and silent payments still resolve from the value.
 - **BREAKING:** `PaymentBuilder.set_zk()` and `Destination.is_zk`. `add_destination` assigns `Destination.id`. Guardrail still receives `zk: true` and `zk_id`.
 - **BREAKING:** `get_payments` and `get_payments_by_qr_code`. Call `verify(input)` for a QR scan or a paste.
-- **BREAKING:** `verify()` returns `VerifyResult` with `status` of `match`, `unknown`, `tampered`, or `incomplete`. A swapped address is `tampered`. `payments` is present only on `match`. `PaymentsResult` and `BrantaPaymentExceptionReason.Tampered` are gone.
+- **BREAKING:** `verify()` returns `VerifyResult` with `status` of `match`, `unknown`, `tampered`, or `incomplete`. A swapped address is `tampered`. `payments` is present only on `match`. `PaymentsResult` and `BrantaPaymentExceptionReason` are gone.
 - **BREAKING:** `DestinationType.Bolt12`, `LnUrl`, `TetherAddress`, and `LnAddress`. `DestinationType` is what `add_payment` accepts: `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`.
 - **BREAKING:** `BrantaClientOptions` is `BrantaApiOptions`. `base_url` is `environment`. `BrantaServerBaseUrl` is `BrantaEnvironment`. `default_api_key` is `api_key`.
 - **BREAKING:** `QRParseException`, `Payment.btc_pay_server_plugin_version`, and `Payment.get_default_value`.

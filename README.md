@@ -43,7 +43,7 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 
 On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. bolt11, Ark, and silent payments resolve from the value. A bare address is `unknown`.
 
-Missing crypto raises `BrantaPaymentException` with reason `crypto_unavailable`. A 404 is `unknown`. 5xx, 429, or no network is `incomplete`.
+A 404 is `unknown`. 5xx, 429, or no network is `incomplete`.
 
 ## Receive
 
