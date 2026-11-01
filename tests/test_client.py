@@ -4,12 +4,12 @@ import json
 
 import pytest
 
-from branta.enums import BrantaServerBaseUrl, PrivacyMode
-from branta.exceptions import BrantaPaymentException
-from branta.options import BrantaClientOptions
-from branta.v2.client import BrantaClient
+from branta.enums import BrantaEnvironment
+from branta.exceptions import BrantaPaymentException, IncompleteError
+from branta.options import BrantaApiOptions
+from branta.client import BrantaClient
 
-# Matches BrantaServerBaseUrl.Localhost's value.
+# Matches BrantaEnvironment.Localhost.
 SAME_ORIGIN = "http://localhost:3000"
 OTHER_ORIGIN = "https://attacker.example"
 
@@ -43,9 +43,10 @@ class _FakeSession:
         return self._response
 
 
-def client_with_response(body: object) -> BrantaClient:
-    session = _FakeSession(_FakeResponse(200, json.dumps(body)))
-    options = BrantaClientOptions(base_url=BrantaServerBaseUrl.Localhost, privacy=PrivacyMode.Loose)
+def client_with_response(body: object, status: int = 200) -> BrantaClient:
+    text = body if isinstance(body, str) else json.dumps(body)
+    session = _FakeSession(_FakeResponse(status, text))
+    options = BrantaApiOptions(environment=BrantaEnvironment.Localhost, api_key="key")
     return BrantaClient(default_options=options, session=session)  # type: ignore[arg-type]
 
 
@@ -123,3 +124,22 @@ async def test_does_not_throw_when_all_logo_fields_are_same_origin_or_absent() -
     payments = await client.get_payments("value")
 
     assert len(payments) == 2
+
+
+async def test_404_returns_an_empty_list() -> None:
+    client = client_with_response("", status=404)
+
+    assert await client.get_payments("value") == []
+
+
+async def test_empty_body_returns_an_empty_list() -> None:
+    client = client_with_response("", status=200)
+
+    assert await client.get_payments("value") == []
+
+
+async def test_server_error_raises_incomplete() -> None:
+    client = client_with_response("nope", status=500)
+
+    with pytest.raises(IncompleteError):
+        await client.get_payments("value")

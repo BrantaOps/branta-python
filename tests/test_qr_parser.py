@@ -1,7 +1,7 @@
 import pytest
 
 from branta.enums import DestinationType
-from branta.v2.parser import QRParser
+from branta.parser import QRParser
 
 
 class TestQRParserPlainText:
@@ -18,13 +18,13 @@ class TestQRParserPlainText:
         parser = QRParser("lnbc100n1ptest")
         assert parser.destination_type == DestinationType.Bolt11
 
-    def test_bolt12_detected(self):
+    def test_bolt12_is_not_a_destination_type(self):
         parser = QRParser("lnotest")
-        assert parser.destination_type == DestinationType.Bolt12
+        assert parser.destination_type is None
 
-    def test_lnurl_detected(self):
+    def test_lnurl_is_not_a_destination_type(self):
         parser = QRParser("LNURLtestvalue")
-        assert parser.destination_type == DestinationType.LnUrl
+        assert parser.destination_type is None
 
     def test_ark_address_detected(self):
         parser = QRParser("ark1testaddress")
@@ -42,17 +42,17 @@ class TestQRParserPlainText:
         parser = QRParser("tsp1testpayment")
         assert parser.destination_type == DestinationType.SilentPayment
 
-    def test_ln_address_detected(self):
+    def test_ln_address_is_not_a_destination_type(self):
         parser = QRParser("user@domain.com")
-        assert parser.destination_type == DestinationType.LnAddress
+        assert parser.destination_type is None
 
-    def test_ethereum_address_detected(self):
+    def test_ethereum_address_is_not_a_destination_type(self):
         parser = QRParser("0x" + "a" * 40)
-        assert parser.destination_type == DestinationType.TetherAddress
+        assert parser.destination_type is None
 
-    def test_tron_address_detected(self):
+    def test_tron_address_is_not_a_destination_type(self):
         parser = QRParser("T" + "a" * 33)
-        assert parser.destination_type == DestinationType.TetherAddress
+        assert parser.destination_type is None
 
     def test_whitespace_trimmed(self):
         parser = QRParser("  bc1qtest  ")
@@ -78,8 +78,8 @@ class TestQRParserBitcoinURI:
 
     def test_bitcoin_uri_with_bolt12_param(self):
         parser = QRParser("bitcoin:bc1qtest?bolt12=lnotest")
-        assert parser.destinations[1].value == "lnotest"
-        assert parser.destinations[1].type == DestinationType.Bolt12
+        assert [d.value for d in parser.destinations] == ["bc1qtest"]
+        assert parser.has_unverifiable_instruction is True
 
     def test_bitcoin_uri_with_ark_param(self):
         parser = QRParser("bitcoin:bc1qtest?ark=ark1testaddress")
@@ -96,17 +96,17 @@ class TestQRParserBitcoinURI:
         assert parser.on_chain_encryption_text == "enc-id"
         assert parser.on_chain_encryption_secret == "my-secret"
 
-    def test_is_on_chain_zk_true_when_both_params_present(self):
+    def test_has_branta_params_true_when_both_params_present(self):
         parser = QRParser("bitcoin:bc1qtest?branta_id=enc-id&branta_secret=my-secret")
-        assert parser.is_on_chain_zk() is True
+        assert parser.has_branta_params() is True
 
-    def test_is_on_chain_zk_false_when_missing_secret(self):
+    def test_has_branta_params_false_when_missing_secret(self):
         parser = QRParser("bitcoin:bc1qtest?branta_id=enc-id")
-        assert parser.is_on_chain_zk() is False
+        assert parser.has_branta_params() is False
 
-    def test_is_on_chain_zk_false_for_plain_address(self):
+    def test_has_branta_params_false_for_plain_address(self):
         parser = QRParser("bitcoin:bc1qtest")
-        assert parser.is_on_chain_zk() is False
+        assert parser.has_branta_params() is False
 
     def test_url_encoded_branta_params_decoded(self):
         parser = QRParser("bitcoin:bc1qtest?branta_id=enc%2Bid&branta_secret=my%20secret")
@@ -126,7 +126,8 @@ class TestQRParserLightningURI:
 
     def test_lightning_bolt12_uri(self):
         parser = QRParser("lightning:lnotest")
-        assert parser.destination_type == DestinationType.Bolt12
+        assert parser.destination_type is None
+        assert parser.has_unverifiable_instruction is True
 
 
 class TestQRParserEdgeCases:
@@ -155,7 +156,7 @@ class TestQRParserEdgeCases:
         assert parser.destination_type == DestinationType.BitcoinAddress
         assert parser.destinations[1].value == "lnbc100n1ptest"
         assert parser.destinations[1].type == DestinationType.Bolt11
-        assert parser.is_on_chain_zk() is False
+        assert parser.has_branta_params() is False
 
     def test_combined_qr_with_multiple_alts(self):
         parser = QRParser("bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?&lightning=lnbc100n1ptest&ark=ark100testaddress")
@@ -165,7 +166,7 @@ class TestQRParserEdgeCases:
         assert parser.destinations[1].type == DestinationType.Bolt11
         assert parser.destinations[2].value == "ark100testaddress"
         assert parser.destinations[2].type == DestinationType.ArkAddress
-        assert parser.is_on_chain_zk() is False
+        assert parser.has_branta_params() is False
 
     def test_bitcoin_uri_with_silent_payment_param(self):
         parser = QRParser("bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?silent_payment=sp1qqwl5p9jhz0000h5zkvlf9gfqv9dl9qjp5ggq5x3fw")
@@ -179,7 +180,7 @@ class TestQRParserEdgeCases:
     )
     def test_control_char_in_scheme_types_bitcoin_address(self, prefix):
         parser = QRParser(f"{prefix}1attackeraddr?branta_id=ID1&branta_secret=SEC1")
-        assert parser.is_on_chain_zk() is True
+        assert parser.has_branta_params() is True
         assert parser.destination == "1attackeraddr"
         assert parser.destination_type == DestinationType.BitcoinAddress
         assert parser.on_chain_encryption_text == "ID1"
@@ -197,9 +198,9 @@ class TestQRParserEdgeCases:
 
     def test_bip321_bc_and_tb_are_on_chain_addresses(self):
         parser = QRParser("bitcoin:?bc=bc1qmerchant&tb=tb1qtest")
-        assert [d.value for d in parser.destinations] == ["bc1qmerchant", "tb1qtest"]
-        assert parser.destinations[0].type == DestinationType.BitcoinAddress
+        assert [d.value for d in parser.destinations] == ["", "bc1qmerchant", "tb1qtest"]
         assert parser.destinations[1].type == DestinationType.BitcoinAddress
+        assert parser.destinations[2].type == DestinationType.BitcoinAddress
         assert parser.has_unverifiable_instruction is False
 
     def test_sp_param_adds_silent_payment(self):
@@ -210,8 +211,7 @@ class TestQRParserEdgeCases:
 
     def test_lno_and_pay_are_unverifiable(self):
         lno = QRParser("bitcoin:bc1qmerchant?lno=lno1qqexample")
-        assert lno.destinations[1].value == "lno1qqexample"
-        assert lno.destinations[1].type == DestinationType.Bolt12
+        assert [d.value for d in lno.destinations] == ["bc1qmerchant"]
         assert lno.has_unverifiable_instruction is True
 
         pay = QRParser("bitcoin:bc1qmerchant?pay=bitcoin:bc1qother")
@@ -228,7 +228,7 @@ class TestQRParserCombined:
     def test_combined_zk_qr(self):
         qr = "bitcoin:bc1qtest?branta_id=enc-id&branta_secret=my-secret&lightning=lnbc100n1ptest&ark=ark1testaddress"
         parser = QRParser(qr)
-        assert parser.is_on_chain_zk() is True
+        assert parser.has_branta_params() is True
         assert len(parser.destinations) == 3
         assert parser.destinations[0].value == "bc1qtest"
         assert parser.destinations[1].value == "lnbc100n1ptest"

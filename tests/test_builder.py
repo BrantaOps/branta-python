@@ -3,8 +3,8 @@ import json
 import pytest
 
 from branta.enums import DestinationType
-from branta.v2.builder import PaymentBuilder
-from branta.v2.serialization import destination_to_api
+from branta.builder import PaymentBuilder
+from branta.serialization import destination_to_api
 
 
 class TestPaymentBuilder:
@@ -12,37 +12,28 @@ class TestPaymentBuilder:
         payment = PaymentBuilder().add_destination("bc1qtest").build()
         assert payment.destinations[0].value == "bc1qtest"
 
-    def test_add_destination_is_not_zk_by_default(self):
+    def test_add_destination_assigns_id(self):
         payment = PaymentBuilder().add_destination("bc1qtest").build()
-        assert payment.destinations[0].is_zk is False
+        assert payment.destinations[0].id is not None
+        assert len(payment.destinations[0].id) == 36
 
     def test_add_destination_with_type(self):
         payment = PaymentBuilder().add_destination("bc1qtest", DestinationType.BitcoinAddress).build()
         assert payment.destinations[0].type == DestinationType.BitcoinAddress
 
-    def test_set_zk_marks_last_destination(self):
-        payment = PaymentBuilder().add_destination("bc1qtest", DestinationType.BitcoinAddress).set_zk().build()
-        assert payment.destinations[0].is_zk is True
-
-    def test_set_zk_assigns_uuid(self):
-        payment = PaymentBuilder().add_destination("bc1qtest").set_zk().build()
-        assert payment.destinations[0].zk_id is not None
-        assert len(payment.destinations[0].zk_id) == 36  # UUID format
-
-    def test_set_zk_assigns_unique_uuids(self):
+    def test_add_destination_assigns_unique_ids(self):
         payment = (
             PaymentBuilder()
             .add_destination("bc1qtest1")
-            .set_zk()
             .add_destination("bc1qtest2")
-            .set_zk()
             .build()
         )
-        assert payment.destinations[0].zk_id != payment.destinations[1].zk_id
+        assert payment.destinations[0].id != payment.destinations[1].id
 
-    def test_set_description(self):
+    def test_set_description_writes_metadata(self):
         payment = PaymentBuilder().add_destination("bc1qtest").set_description("Test payment").build()
-        assert payment.description == "Test payment"
+        assert payment.description is None
+        assert json.loads(payment.metadata)["description"] == "Test payment"
 
     def test_set_ttl(self):
         payment = PaymentBuilder().add_destination("bc1qtest").set_ttl(3600).build()
@@ -80,25 +71,10 @@ class TestPaymentBuilder:
         assert payment.destinations[0].value == "bc1qtest1"
         assert payment.destinations[1].value == "lnbc100n1ptest"
 
-    def test_set_zk_only_affects_last_destination(self):
-        payment = (
-            PaymentBuilder()
-            .add_destination("bc1qtest1")
-            .add_destination("lnbc100n1ptest")
-            .set_zk()
-            .build()
-        )
-        assert payment.destinations[0].is_zk is False
-        assert payment.destinations[1].is_zk is True
-
     def test_fluent_builder_returns_self(self):
         builder = PaymentBuilder()
         result = builder.add_destination("bc1qtest")
         assert result is builder
-
-    def test_set_zk_no_destinations_does_nothing(self):
-        payment = PaymentBuilder().set_zk().build()
-        assert len(payment.destinations) == 0
 
     def test_add_destination_without_type_type_is_none(self):
         payment = PaymentBuilder().add_destination("bc1qtest").build()
@@ -129,7 +105,7 @@ class TestPaymentBuilder:
         assert result is builder
 
     def test_child_platform_serializes_to_api(self):
-        from branta.v2.serialization import payment_to_api
+        from branta.serialization import payment_to_api
         payment = (
             PaymentBuilder()
             .add_destination("bc1qtest")
@@ -142,7 +118,7 @@ class TestPaymentBuilder:
         assert "logo_light_url" not in api["child_platform"]
 
     def test_no_child_platform_omitted_from_api(self):
-        from branta.v2.serialization import payment_to_api
+        from branta.serialization import payment_to_api
         payment = PaymentBuilder().add_destination("bc1qtest").build()
         api = payment_to_api(payment)
         assert "child_platform" not in api
@@ -152,10 +128,6 @@ class TestSerializationDestinationType:
     @pytest.mark.parametrize("dest_type,expected", [
         (DestinationType.BitcoinAddress, "bitcoin_address"),
         (DestinationType.Bolt11, "bolt11"),
-        (DestinationType.Bolt12, "bolt12"),
-        (DestinationType.LnUrl, "ln_url"),
-        (DestinationType.TetherAddress, "tether_address"),
-        (DestinationType.LnAddress, "ln_address"),
         (DestinationType.ArkAddress, "ark_address"),
         (DestinationType.SilentPayment, "silent_payment"),
     ])
@@ -170,3 +142,19 @@ class TestSerializationDestinationType:
         destination = Destination(value="addr")
         api_obj = destination_to_api(destination)
         assert "type" not in api_obj
+
+    def test_destination_always_sends_zk_true_and_id_as_zk_id(self):
+        from branta.models import Destination
+        destination = Destination(value="addr", id="dest-1", type=DestinationType.BitcoinAddress)
+        api_obj = destination_to_api(destination)
+        assert api_obj["zk"] is True
+        assert api_obj["zk_id"] == "dest-1"
+
+    def test_plaintext_description_is_not_an_api_field(self):
+        from branta.models import Payment
+        from branta.serialization import payment_from_api, payment_to_api
+
+        posted = payment_to_api(Payment(description="plaintext"))
+        assert "description" not in posted
+        parsed = payment_from_api({"destinations": [], "description": "plaintext"})
+        assert parsed.description is None

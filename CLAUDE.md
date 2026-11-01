@@ -1,23 +1,16 @@
 # Branta Python SDK
 
-Feature-parity Python port of the Branta SDK. Mirrors `branta-js` and `branta-dotnet` — any public API change in one must be reflected here and in the other two.
+Feature-parity Python port of the Branta SDK. Mirrors `branta-js` 4.0.4. A public method added or changed here has to be reflected in `branta-js` and `branta-dotnet`.
 
 ## Package layout
 
-- `branta/` — top-level package; re-exports all public symbols
-- `branta/enums.py` — `BrantaServerBaseUrl`, `DestinationType`, `PrivacyMode`
-- `branta/exceptions.py` — `BrantaPaymentException`, `QRParseException`
-- `branta/models.py` — `Payment`, `Destination`, `Platform`, `PaymentsResult`, `AddPaymentResult`
-- `branta/options.py` — `BrantaClientOptions`
-- `branta/extensions.py` — shared helper functions (hash, fragment, type detection)
-- `branta/v2/service.py` — `BrantaService` (orchestrates ZK encrypt/decrypt around HTTP)
-- `branta/v2/client.py` — `BrantaClient` (raw HTTP; do not call directly from consumer code)
-- `branta/v2/builder.py` — `PaymentBuilder`
-- `branta/v2/parser.py` — `QRParser`
-- `branta/v2/encryption.py` — `AesEncryption` (static), `AesEncryptionService` (instance wrapper)
-- `branta/v2/secret_generator.py` — `GuidSecretGenerator`
-- `branta/v2/serialization.py` — snake_case JSON serialization helpers
-- `tests/` — mirrors `branta/`; unit tests use mocked client + AES; integration tests hit live endpoints only when `BRANTA_RUN_INTEGRATION=1`
+- `branta/__init__.py` — public export (`BrantaService`, `PaymentBuilder`, `DestinationType`, `BrantaEnvironment`, `VerifyResult`, `BrantaApiOptions`, exceptions)
+- `branta/service.py` — `BrantaService` (encrypt/decrypt around HTTP). `client.py` is the raw HTTP layer; do not call it from consumer code
+- `branta/builder.py` — `PaymentBuilder`
+- `branta/parser.py` — `QRParser` (internal)
+- `branta/encryption.py` — AES-256-GCM
+- `branta/serialization.py` — Guardrail JSON
+- `tests/` — unit tests mock the client; integration tests hit live endpoints only when `BRANTA_RUN_INTEGRATION=1`
 
 ## Setup
 
@@ -30,20 +23,23 @@ pip install -e ".[dev]"
 - `pytest tests/` — unit tests; live lookups skipped unless `BRANTA_RUN_INTEGRATION=1`
 - `BRANTA_RUN_INTEGRATION=1 pytest tests/test_integration.py` — live Guardrail lookups
 - `coverage run -m pytest tests/ && coverage report` — with coverage
-- `pip install -e .` / `pip publish` — publish to PyPI (requires `twine`)
 
 ## Key behaviors to preserve
 
-- **`PrivacyMode.Strict` is the default.** `get_payments` throws `BrantaPaymentException` for plain bitcoin addresses; `get_payments_by_qr_code` returns an empty `PaymentsResult`. `add_payment` throws if any destination has `is_zk=False`.
-- **`verify_url` is always returned**, even on a miss. Format: `{base_url}/v2/verify/{lookup}` plus `#k-{zk_id}={key}` fragments.
-- **ZK encryption:** Bitcoin addresses use a random secret (GUID); hash-ZK types (bolt11, ark, silent_payment) use a deterministic key from SHA256(normalized value). `add_payment` mutates `payment.destinations[*].value` to the encrypted form before POSTing.
-- **Metadata DEK-envelope:** If a payment has metadata and any ZK destination, a separate DEK is generated, metadata is encrypted with it, and the DEK is encrypted per-destination.
-- **Never surface lookup failures.** Swallow decryption errors; leave `is_encrypted=True` and value unchanged.
-- **Domain validation.** `platform_logo_url`, `platform_logo_light_url`, `parent_platform.logo_url`/`logo_light_url`, and `child_platform.logo_url`/`logo_light_url` must each match `base_url`'s origin. Every payment in a GET response is checked, not just the first.
+- **Unencrypted destinations are not supported.** `verify` is the only lookup. A raw on-chain address (including `tb1` / `bcrt1`) is `unknown` and does not GET. `add_payment` encrypts every destination; types that cannot be encrypted throw.
+- **`DestinationType` is only what `add_payment` accepts:** `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`. BIP21 extras this SDK cannot encrypt (`lno`, `pay`, non-bolt11 `lightning`) make `verify()` return `unknown`.
+- **`verify()` returns `VerifyResult`.** `match` includes `payments` and `verify_url`. `unknown`, `tampered`, and `incomplete` include only `verify_url`. A swapped address is `tampered`. A 404 is `unknown`. 5xx, 429, and no network are `incomplete`. `crypto_unavailable` still throws. `branta_id` / `branta_secret` with no payable destination is `unknown`. A bolt11 / Ark / silent-payment GET hit is `unknown` unless a destination of that type decrypts.
+- **`verify_url` is always returned.** Format: `{api_origin}/v2/verify/{lookup}` plus a URL fragment built from per-destination encryption keys on `match`.
+- **Encryption.** Bitcoin addresses use a caller-supplied secret (random UUID). bolt11, Ark, and silent payments use a key derived from a normalized hash of the value. `add_payment` encrypts a copy and leaves the caller `Payment` unchanged. Guardrail still receives `zk: true` and `zk_id` (`Destination.id`).
+- **Description** lives in encrypted `metadata.description` and is lifted onto `payment.description` after decrypt. It is not posted or read as Guardrail's plaintext `description` field.
+- **Public names.** `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`). `BrantaEnvironment`. Do not reintroduce `BrantaClientOptions`, `PrivacyMode`, `BrantaServerBaseUrl`, `set_zk`, or `get_payments_by_qr_code`.
+- **`verify` parses first.** Multi-value payloads go through `QRParser` whether they came from a scan or a paste.
+- **Never surface `unknown` or thrown errors to the user.** `tampered` is the exception: warn, do not show a verified card.
+- **Domain validation.** Logo URLs on platform, light, parent, and child must match the API origin. Every payment in a GET response is checked. An empty logo skips that field only.
 
 ## Conventions
 
-- Async throughout — `BrantaService` and `BrantaClient` methods are all `async def`.
-- Python snake_case for all public attribute and method names.
-- Inject `client`, `aes_encryption`, `secret_generator` into `BrantaService` for testing.
-- Keep feature-parity with `branta-js` and `branta-dotnet`: any new method, option, or enum value added here must be reflected in both.
+- Async throughout — `BrantaService` and `BrantaClient` methods are `async def`.
+- Python snake_case for public attributes and methods.
+- `BrantaService` takes one `BrantaApiOptions`. Inject `client`, `aes_encryption`, and `secret_generator` as keyword arguments in tests.
+- The public API is whatever `branta/__init__.py` exports.

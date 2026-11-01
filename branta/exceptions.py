@@ -1,8 +1,8 @@
 from enum import Enum
 
 
-class BrantaPaymentExceptionReason(Enum):
-    Tampered = "tampered"
+class BrantaPaymentExceptionReason(str, Enum):
+    CryptoUnavailable = "crypto_unavailable"
 
 
 class BrantaPaymentException(Exception):
@@ -11,5 +11,5 @@ class BrantaPaymentException(Exception):
         self.reason = reason
 
 
-class QRParseException(Exception):
+class IncompleteError(Exception):
     pass

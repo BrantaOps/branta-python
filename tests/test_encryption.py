@@ -1,6 +1,6 @@
 import pytest
 
-from branta.v2.encryption import AesEncryption
+from branta.encryption import AesEncryption
 
 
 class TestAesEncryption:
