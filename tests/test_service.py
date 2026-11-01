@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import quote
 
 import pytest
 
@@ -90,6 +91,15 @@ class TestVerify:
         assert result.payments[0].destinations[0].value == ADDRESS
         assert result.verify_url == f"http://localhost:3000/v2/verify/{LOOKUP}#k-dest-1={SECRET}"
         assert client.gets == [LOOKUP]
+
+    async def test_verify_url_encodes_reserved_characters_in_the_fragment(self):
+        client = FakeClient()
+        secret = "secret&injected=1"
+        client.payments = [await encrypted_address(secret=secret, destination_id="AAAA&k-BBBB")]
+        result = await service(client).verify(qr(secret=quote(secret, safe="")))
+
+        assert result.status == VerifyStatus.Match
+        assert result.verify_url.endswith("#k-AAAA%26k-BBBB=secret%26injected%3D1")
 
     async def test_swapped_address_is_tampered_without_payments_or_key_fragment(self):
         client = FakeClient()
