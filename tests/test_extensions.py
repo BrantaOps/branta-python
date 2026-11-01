@@ -124,3 +124,7 @@ class TestToUrlFragment:
     def test_multiple_keys_joined_with_ampersand(self):
         result = to_url_fragment({"id1": "key1", "id2": "key2"})
         assert result == "#k-id1=key1&k-id2=key2"
+
+    def test_encodes_reserved_characters_in_id_and_key(self):
+        result = to_url_fragment({"AAAA&k-BBBB": "sec ret&=#"})
+        assert result == "#k-AAAA%26k-BBBB=sec%20ret%26%3D%23"

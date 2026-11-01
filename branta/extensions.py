@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, Optional
+from urllib.parse import quote
 
 from branta.enums import BrantaEnvironment, BrantaEnvironmentUrls, DestinationType
 
@@ -83,8 +84,19 @@ def to_normalized_hash(value: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest().upper()
 
 
+# Same reserved-character set as encodeURIComponent. UUIDs and hex hashes are unchanged.
+_FRAGMENT_SAFE = "-_.!~*'()"
+
+
+def _encode_fragment_component(value: str) -> str:
+    return quote(value, safe=_FRAGMENT_SAFE)
+
+
 def to_url_fragment(keys: Dict[str, str]) -> str:
     if not keys:
         return ""
-    fragments = [f"k-{k}={v}" for k, v in keys.items()]
+    fragments = [
+        f"k-{_encode_fragment_component(key)}={_encode_fragment_component(secret)}"
+        for key, secret in keys.items()
+    ]
     return "#" + "&".join(fragments)
