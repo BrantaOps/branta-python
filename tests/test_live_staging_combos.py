@@ -8,15 +8,12 @@ from __future__ import annotations
 import os
 from urllib.parse import quote, urlencode
 
-import aiohttp
 import pytest
 
 from branta.enums import BrantaEnvironment, DestinationType, VerifyStatus
 from branta.models import AddPaymentResult, Payment, VerifyResult
-from branta.options import BrantaApiOptions
 from branta.builder import PaymentBuilder
-from branta.client import BrantaClient
-from branta.service import BrantaService
+from tests.live_helpers import make_service
 
 pytestmark = [
     pytest.mark.skipif(
@@ -30,16 +27,6 @@ pytestmark = [
 ]
 
 TIMEOUT = 60
-
-
-def make_service() -> BrantaService:
-    options = BrantaApiOptions(
-        environment=BrantaEnvironment.Staging,
-        api_key=os.environ.get("BRANTA_API_KEY"),
-    )
-    token = os.environ.get("BRANTA_INTEGRATION_METRICS_TOKEN")
-    session = aiohttp.ClientSession(headers={"X-Branta-Integration-Token": token}) if token else None
-    return BrantaService(options, client=BrantaClient(options, session=session))
 
 
 def pol_uri(recipient: str, encrypted: str, secret: str) -> str:
@@ -57,7 +44,7 @@ def pol_uri(recipient: str, encrypted: str, secret: str) -> str:
 
 @pytest.mark.timeout(TIMEOUT)
 async def test_staging_live_combos():
-    svc = make_service()
+    svc = make_service(BrantaEnvironment.Staging)
     btc = "bc1qgw3dzmhnyvcswc9r0v0z0ajtp8ulm4nuyeahwr"
     usdt = "0x278297528c32eCa01295B0d2135984d3442ec963"
     usdc = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"

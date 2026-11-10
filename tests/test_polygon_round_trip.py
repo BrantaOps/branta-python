@@ -8,14 +8,11 @@ from __future__ import annotations
 import os
 from urllib.parse import urlencode
 
-import aiohttp
 import pytest
 
 from branta.enums import BrantaEnvironment, DestinationType, VerifyStatus
-from branta.options import BrantaApiOptions
 from branta.builder import PaymentBuilder
-from branta.client import BrantaClient
-from branta.service import BrantaService
+from tests.live_helpers import make_service
 
 pytestmark = [
     pytest.mark.skipif(
@@ -29,16 +26,6 @@ pytestmark = [
 ]
 
 TIMEOUT = 30
-
-
-def make_service() -> BrantaService:
-    options = BrantaApiOptions(
-        environment=BrantaEnvironment.Staging,
-        api_key=os.environ.get("BRANTA_API_KEY"),
-    )
-    token = os.environ.get("BRANTA_INTEGRATION_METRICS_TOKEN")
-    session = aiohttp.ClientSession(headers={"X-Branta-Integration-Token": token}) if token else None
-    return BrantaService(options, client=BrantaClient(options, session=session))
 
 
 def pol_uri(recipient: str, encrypted: str, secret: str) -> str:
@@ -58,7 +45,7 @@ def pol_uri(recipient: str, encrypted: str, secret: str) -> str:
 async def test_staging_usdt_polygon_round_trip():
     address = "0x278297528c32eCa01295B0d2135984d3442ec963"
     swapped = "0x1111111111111111111111111111111111111111"
-    svc = make_service()
+    svc = make_service(BrantaEnvironment.Staging)
     added = await svc.add_payment(
         PaymentBuilder()
         .add_destination(address, DestinationType.UsdtPolygon)
@@ -90,7 +77,7 @@ async def test_staging_usdt_polygon_round_trip():
 async def test_staging_usdc_polygon_round_trip():
     address = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
     swapped = "0x1111111111111111111111111111111111111111"
-    svc = make_service()
+    svc = make_service(BrantaEnvironment.Staging)
     added = await svc.add_payment(
         PaymentBuilder()
         .add_destination(address, DestinationType.UsdcPolygon)

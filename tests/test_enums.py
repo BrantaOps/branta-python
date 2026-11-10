@@ -16,10 +16,10 @@ def test_destination_type_wire_format_is_exact():
 
 
 def test_polygon_evm_helpers():
-    assert POLYGON_EVM_DESTINATION_TYPES == [
+    assert POLYGON_EVM_DESTINATION_TYPES == (
         DestinationType.UsdtPolygon,
         DestinationType.UsdcPolygon,
-    ]
+    )
     assert is_polygon_evm_destination_type(DestinationType.UsdtPolygon)
     assert is_polygon_evm_destination_type(DestinationType.UsdcPolygon)
     assert not is_polygon_evm_destination_type(DestinationType.BitcoinAddress)

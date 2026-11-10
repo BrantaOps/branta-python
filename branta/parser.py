@@ -16,7 +16,7 @@ _MALFORMED_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 class QrDestination:
     value: str
     type: Optional[DestinationType] = None
-    """Visible address that participates in the secret-key swap check."""
+    # True when this address participates in the secret-key swap check.
     secret_key: bool = False
 
 
