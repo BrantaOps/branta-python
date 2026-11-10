@@ -3,10 +3,10 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import replace
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from urllib.parse import quote
 
-from branta.enums import DestinationType, VerifyStatus
+from branta.enums import DestinationType, VerifyStatus, is_secret_key_address_type
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_base_url, get_derived_key_type, to_normalized_hash, to_url_fragment
 from branta.models import AddPaymentResult, Destination, Payment, Platform, VerifyResult
@@ -22,10 +22,24 @@ class TamperedError(Exception):
     pass
 
 
+def _matched_destinations_from(payments: List[Payment]) -> List[Destination]:
+    matched: List[Destination] = []
+    for payment in payments:
+        for destination in payment.destinations:
+            if destination.is_encrypted is False:
+                matched.append(replace(destination))
+    return matched
+
+
 def _to_verify_result(payments: List[Payment], verify_url: str) -> VerifyResult:
     if not payments:
         return VerifyResult(status=VerifyStatus.Unknown, verify_url=verify_url)
-    return VerifyResult(status=VerifyStatus.Match, verify_url=verify_url, payments=payments)
+    return VerifyResult(
+        status=VerifyStatus.Match,
+        verify_url=verify_url,
+        payments=payments,
+        matched_destinations=_matched_destinations_from(payments),
+    )
 
 
 def _copy_platform(platform: Optional[Platform]) -> Optional[Platform]:
@@ -50,14 +64,17 @@ def _is_bech32(value: str) -> bool:
 def _addresses_match(left: str, right: str) -> bool:
     if _is_bech32(left) and _is_bech32(right):
         return left.lower() == right.lower()
+    if left.lower().startswith("0x") and right.lower().startswith("0x"):
+        return left.lower() == right.lower()
     return left == right
 
 
-def _uniform_on_chain_address(parser: QRParser) -> Optional[str]:
+def _uniform_secret_key_address(parser: QRParser) -> Optional[str]:
+    """Shared secret-key address across the QR, or None. Conflicting values are tampered."""
     addresses = [
         destination.value
         for destination in parser.destinations
-        if destination.type == DestinationType.BitcoinAddress and destination.value.strip() != ""
+        if destination.secret_key and destination.value.strip() != ""
     ]
     if not addresses:
         return None
@@ -99,7 +116,7 @@ class BrantaService:
             lookup = ""
 
         try:
-            expected_on_chain_address = _uniform_on_chain_address(parser)
+            expected_secret_key_address = _uniform_secret_key_address(parser)
 
             if parser.has_unverifiable_instruction:
                 return VerifyResult(status=VerifyStatus.Unknown, verify_url=self._build_verify_url(options, lookup))
@@ -110,13 +127,14 @@ class BrantaService:
                     for destination in parser.destinations
                     if get_derived_key_type(destination.value) is not None
                 ]
-                if expected_on_chain_address is None and not additional_values:
+                if expected_secret_key_address is None and not additional_values:
                     return VerifyResult(status=VerifyStatus.Unknown, verify_url=self._build_verify_url(options, lookup))
                 payments, verify_url = await self._lookup_by_branta_id(
                     parser.on_chain_encryption_text or "",
                     parser.on_chain_encryption_secret,
                     additional_values,
-                    expected_on_chain_address,
+                    expected_secret_key_address,
+                    set(parser.expected_secret_key_types),
                     options,
                 )
                 return _to_verify_result(payments, verify_url)
@@ -137,20 +155,29 @@ class BrantaService:
         lookup_value: str,
         encryption_key: Optional[str],
         additional_hash_values: List[str],
-        expected_on_chain_address: Optional[str],
+        expected_secret_key_address: Optional[str],
+        expected_secret_key_types: Set[DestinationType],
         options: Optional[BrantaApiOptions],
     ) -> tuple[List[Payment], str]:
         payments = await self._client.get_payments(lookup_value, options)
         keys: Dict[str, str] = {}
         bound: List[Payment] = []
         for payment in payments:
-            on_chain_bound = await self._decrypt_destinations(payment, encryption_key, keys, expected_on_chain_address)
+            secret_key_bound = await self._decrypt_destinations(
+                payment,
+                encryption_key,
+                keys,
+                expected_secret_key_address,
+                expected_secret_key_types,
+            )
             hashes_bound = True
             for value in additional_hash_values:
                 if not await self._decrypt_derived_key_destinations(payment, value, keys):
                     hashes_bound = False
-            has_payable_instruction = expected_on_chain_address is not None or len(additional_hash_values) > 0
-            if has_payable_instruction and on_chain_bound and hashes_bound:
+            has_payable_instruction = (
+                expected_secret_key_address is not None or len(additional_hash_values) > 0
+            )
+            if has_payable_instruction and secret_key_bound and hashes_bound:
                 bound.append(payment)
         return bound, self._build_verify_url(options, lookup_value, keys)
 
@@ -207,29 +234,43 @@ class BrantaService:
         payment: Payment,
         encryption_key: Optional[str],
         keys: Dict[str, str],
-        expected_on_chain_address: Optional[str],
+        expected_secret_key_address: Optional[str],
+        expected_secret_key_types: Set[DestinationType],
     ) -> bool:
-        on_chain_bound = expected_on_chain_address is None
+        # No secret-key instruction on the QR → leave every secret-key rail encrypted.
+        secret_key_bound = expected_secret_key_address is None
+        decrypted_expected_rail = False
         for destination in payment.destinations:
             if destination.is_encrypted is False:
                 continue
-            destination.is_encrypted = True
-            if destination.type != DestinationType.BitcoinAddress or encryption_key is None:
+            if destination.type is None or not is_secret_key_address_type(destination.type):
+                continue
+            # Only this QR's rail family (e.g. polygon when scanning pol:). Empty = none.
+            if destination.type not in expected_secret_key_types:
+                continue
+            if encryption_key is None:
                 continue
             try:
                 decrypted = await self._aes_encryption.decrypt(destination.value, encryption_key)
             except Exception:
                 continue
-            if expected_on_chain_address is not None and not _addresses_match(decrypted, expected_on_chain_address):
-                raise TamperedError()
-            if expected_on_chain_address is not None:
-                on_chain_bound = True
+            decrypted_expected_rail = True
+            # Match-if-any within the family: a sibling rail with a different address stays encrypted.
+            if expected_secret_key_address is not None and not _addresses_match(
+                decrypted, expected_secret_key_address
+            ):
+                continue
+            if expected_secret_key_address is not None:
+                secret_key_bound = True
             destination.value = decrypted
             destination.is_encrypted = False
             if destination.id is not None and destination.id not in keys:
                 keys[destination.id] = encryption_key
             await self._try_decrypt_metadata(payment, destination, encryption_key)
-        return on_chain_bound
+        # Tampered only when a family rail decrypted and none matched the scanned address.
+        if expected_secret_key_address is not None and not secret_key_bound and decrypted_expected_rail:
+            raise TamperedError()
+        return secret_key_bound
 
     async def _try_decrypt_metadata(self, payment: Payment, destination: Destination, key_used: str) -> None:
         if destination.encrypted_dek is None or payment.metadata is None or payment.is_metadata_decrypted:
@@ -261,7 +302,7 @@ class BrantaService:
             if destination.type is None and detected is not None:
                 destination.type = detected
 
-            if detected == DestinationType.BitcoinAddress:
+            if detected is not None and is_secret_key_address_type(detected):
                 destination.value = await self._aes_encryption.encrypt(
                     destination.value,
                     secret,

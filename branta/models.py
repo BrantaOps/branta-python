@@ -43,6 +43,8 @@ class VerifyResult:
     status: VerifyStatus
     verify_url: str
     payments: Optional[List[Payment]] = None
+    # Decrypted rails that bound the scan on Match (token for pol: is on type).
+    matched_destinations: Optional[List[Destination]] = None
 
 
 @dataclass

@@ -233,3 +233,35 @@ class TestQRParserCombined:
         assert parser.destinations[0].value == "bc1qtest"
         assert parser.destinations[1].value == "lnbc100n1ptest"
         assert parser.destinations[2].value == "ark1testaddress"
+
+
+class TestQRParserPol:
+    def test_pol_uri_is_secret_key_without_token_type(self):
+        parser = QRParser(
+            "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&branta_id=enc&branta_secret=sec"
+        )
+        assert parser.destination == "0x278297528c32eCa01295B0d2135984d3442ec963"
+        assert parser.destination_type is None
+        assert parser.destinations[0].secret_key is True
+        assert parser.on_chain_encryption_text == "enc"
+        assert parser.on_chain_encryption_secret == "sec"
+        assert parser.expected_secret_key_types == [
+            DestinationType.UsdtPolygon,
+            DestinationType.UsdcPolygon,
+        ]
+
+    def test_bitcoin_uri_expects_bitcoin_secret_key_family(self):
+        parser = QRParser("bitcoin:bc1qmerchant?branta_id=enc&branta_secret=sec")
+        assert parser.destinations[0].secret_key is True
+        assert parser.expected_secret_key_types == [DestinationType.BitcoinAddress]
+
+
+class TestQRParserUnrecognizedScheme:
+    def test_unrecognized_scheme_is_opaque_text(self):
+        parser = QRParser("ethereum:0xabc?value=1")
+        assert parser.destination == "ethereum:0xabc?value=1"
+        assert parser.destination_type is None
+        assert parser.destinations[0].secret_key is False
+        assert parser.expected_secret_key_types == []
+        assert parser.has_branta_params() is False
+
