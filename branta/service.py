@@ -3,10 +3,10 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import replace
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from urllib.parse import quote
 
-from branta.enums import DestinationType, VerifyStatus
+from branta.enums import DestinationType, VerifyStatus, is_secret_key_address_type
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_base_url, get_derived_key_type, to_normalized_hash, to_url_fragment
 from branta.models import AddPaymentResult, Destination, Payment, Platform, VerifyResult
@@ -22,10 +22,24 @@ class TamperedError(Exception):
     pass
 
 
+def _matched_destinations_from(payments: List[Payment]) -> List[Destination]:
+    matched: List[Destination] = []
+    for payment in payments:
+        for destination in payment.destinations:
+            if destination.is_encrypted is False:
+                matched.append(destination)
+    return matched
+
+
 def _to_verify_result(payments: List[Payment], verify_url: str) -> VerifyResult:
     if not payments:
         return VerifyResult(status=VerifyStatus.Unknown, verify_url=verify_url)
-    return VerifyResult(status=VerifyStatus.Match, verify_url=verify_url, payments=payments)
+    return VerifyResult(
+        status=VerifyStatus.Match,
+        verify_url=verify_url,
+        payments=payments,
+        matched_destinations=_matched_destinations_from(payments),
+    )
 
 
 def _copy_platform(platform: Optional[Platform]) -> Optional[Platform]:
@@ -50,6 +64,8 @@ def _is_bech32(value: str) -> bool:
 def _addresses_match(left: str, right: str) -> bool:
     if _is_bech32(left) and _is_bech32(right):
         return left.lower() == right.lower()
+    if left.startswith("0x") and right.startswith("0x"):
+        return left.lower() == right.lower()
     return left == right
 
 
@@ -57,7 +73,7 @@ def _uniform_on_chain_address(parser: QRParser) -> Optional[str]:
     addresses = [
         destination.value
         for destination in parser.destinations
-        if destination.type == DestinationType.BitcoinAddress and destination.value.strip() != ""
+        if destination.secret_key and destination.value.strip() != ""
     ]
     if not addresses:
         return None
@@ -117,6 +133,7 @@ class BrantaService:
                     parser.on_chain_encryption_secret,
                     additional_values,
                     expected_on_chain_address,
+                    set(parser.expected_secret_key_types),
                     options,
                 )
                 return _to_verify_result(payments, verify_url)
@@ -138,13 +155,20 @@ class BrantaService:
         encryption_key: Optional[str],
         additional_hash_values: List[str],
         expected_on_chain_address: Optional[str],
+        expected_on_chain_types: Set[DestinationType],
         options: Optional[BrantaApiOptions],
     ) -> tuple[List[Payment], str]:
         payments = await self._client.get_payments(lookup_value, options)
         keys: Dict[str, str] = {}
         bound: List[Payment] = []
         for payment in payments:
-            on_chain_bound = await self._decrypt_destinations(payment, encryption_key, keys, expected_on_chain_address)
+            on_chain_bound = await self._decrypt_destinations(
+                payment,
+                encryption_key,
+                keys,
+                expected_on_chain_address,
+                expected_on_chain_types,
+            )
             hashes_bound = True
             for value in additional_hash_values:
                 if not await self._decrypt_derived_key_destinations(payment, value, keys):
@@ -208,20 +232,29 @@ class BrantaService:
         encryption_key: Optional[str],
         keys: Dict[str, str],
         expected_on_chain_address: Optional[str],
+        expected_on_chain_types: Set[DestinationType],
     ) -> bool:
         on_chain_bound = expected_on_chain_address is None
+        decrypted_expected_rail = False
         for destination in payment.destinations:
             if destination.is_encrypted is False:
                 continue
             destination.is_encrypted = True
-            if destination.type != DestinationType.BitcoinAddress or encryption_key is None:
+            if destination.type is None or not is_secret_key_address_type(destination.type):
+                continue
+            # Outside this QR's rail family (e.g. bitcoin when scanning pol:) — leave encrypted.
+            if expected_on_chain_types and destination.type not in expected_on_chain_types:
+                continue
+            if encryption_key is None:
                 continue
             try:
                 decrypted = await self._aes_encryption.decrypt(destination.value, encryption_key)
             except Exception:
                 continue
+            decrypted_expected_rail = True
+            # Match-if-any within the family: a sibling rail with a different address stays encrypted.
             if expected_on_chain_address is not None and not _addresses_match(decrypted, expected_on_chain_address):
-                raise TamperedError()
+                continue
             if expected_on_chain_address is not None:
                 on_chain_bound = True
             destination.value = decrypted
@@ -229,6 +262,9 @@ class BrantaService:
             if destination.id is not None and destination.id not in keys:
                 keys[destination.id] = encryption_key
             await self._try_decrypt_metadata(payment, destination, encryption_key)
+        # Tampered only when a family rail decrypted and none matched the scanned address.
+        if expected_on_chain_address is not None and not on_chain_bound and decrypted_expected_rail:
+            raise TamperedError()
         return on_chain_bound
 
     async def _try_decrypt_metadata(self, payment: Payment, destination: Destination, key_used: str) -> None:
@@ -261,7 +297,7 @@ class BrantaService:
             if destination.type is None and detected is not None:
                 destination.type = detected
 
-            if detected == DestinationType.BitcoinAddress:
+            if detected is not None and is_secret_key_address_type(detected):
                 destination.value = await self._aes_encryption.encrypt(
                     destination.value,
                     secret,

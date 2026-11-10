@@ -1,6 +1,6 @@
 # Branta Python SDK
 
-Feature-parity Python port of the Branta SDK. Mirrors `branta-js` 4.0.4. A public method added or changed here has to be reflected in `branta-js` and `branta-dotnet`.
+Feature-parity Python port of the Branta SDK. Mirrors the other Branta 4.2.0 SDKs. A public method added or changed here has to be reflected across the SDK family.
 
 ## Package layout
 
@@ -10,7 +10,7 @@ Feature-parity Python port of the Branta SDK. Mirrors `branta-js` 4.0.4. A publi
 - `branta/parser.py` — `QRParser` (internal)
 - `branta/encryption.py` — AES-256-GCM
 - `branta/serialization.py` — Guardrail JSON
-- `tests/` — unit tests mock the client; integration tests hit live endpoints only when `BRANTA_RUN_INTEGRATION=1`
+- `tests/` — unit tests mock the client; live lookups / polygon round-trips / combos run only when `BRANTA_RUN_INTEGRATION=1` (API key required for write tests)
 
 ## Setup
 
@@ -22,13 +22,15 @@ pip install -e ".[dev]"
 
 - `pytest tests/` — unit tests; live lookups skipped unless `BRANTA_RUN_INTEGRATION=1`
 - `BRANTA_RUN_INTEGRATION=1 pytest tests/test_integration.py` — live Guardrail lookups
+- `BRANTA_RUN_INTEGRATION=1 BRANTA_API_KEY=… pytest tests/` — include polygon round-trips and live combos
 - `coverage run -m pytest tests/ && coverage report` — with coverage
 
 ## Key behaviors to preserve
 
-- **Unencrypted destinations are not supported.** `verify` is the only lookup. A raw on-chain address (including `tb1` / `bcrt1`) is `unknown` and does not GET. `add_payment` encrypts every destination; types that cannot be encrypted throw.
-- **`DestinationType` is only what `add_payment` accepts:** `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`. BIP21 extras this SDK cannot encrypt (`lno`, `pay`, non-bolt11 `lightning`) make `verify()` return `unknown`.
-- **`verify()` returns `VerifyResult`.** `match` includes `payments` and `verify_url`. `unknown`, `tampered`, and `incomplete` include only `verify_url`. A swapped address is `tampered`. A 404 is `unknown`. 5xx, 429, and no network are `incomplete`. `branta_id` / `branta_secret` with no payable destination is `unknown`. A bolt11 / Ark / silent-payment GET hit is `unknown` unless a destination of that type decrypts.
+- **Unencrypted destinations are not supported.** `verify` is the only lookup. A raw on-chain address (including `tb1` / `bcrt1` / bare `0x`) is `unknown` and does not GET. `add_payment` encrypts every destination; types that cannot be encrypted throw.
+- **`DestinationType` is only what `add_payment` accepts:** `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`, `usdt_polygon`, `usdc_polygon`. Pass Polygon types explicitly. BIP21 extras this SDK cannot encrypt (`lno`, `pay`, non-bolt11 `lightning`) make `verify()` return `unknown`.
+- **`pol:` verify** is match-if-any within the Polygon EVM family; token is on `matched_destinations[].type`.
+- **`verify()` returns `VerifyResult`.** `match` includes `payments`, `matched_destinations`, and `verify_url`. `unknown`, `tampered`, and `incomplete` include only `verify_url`. A swapped address is `tampered`. A 404 is `unknown`. 5xx, 429, and no network are `incomplete`. `branta_id` / `branta_secret` with no payable destination is `unknown`. A bolt11 / Ark / silent-payment GET hit is `unknown` unless a destination of that type decrypts.
 - **`verify_url` is always returned.** Format: `{api_origin}/v2/verify/{lookup}` plus a URL fragment built from per-destination encryption keys on `match`.
 - **Encryption.** Bitcoin addresses use a caller-supplied secret (random UUID). bolt11, Ark, and silent payments use a key derived from a normalized hash of the value. `add_payment` encrypts a copy and leaves the caller `Payment` unchanged. Guardrail still receives `zk: true` and `zk_id` (`Destination.id`).
 - **Description** lives in encrypted `metadata.description` and is lifted onto `payment.description` after decrypt. It is not posted or read as Guardrail's plaintext `description` field.

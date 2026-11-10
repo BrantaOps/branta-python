@@ -145,6 +145,17 @@ class TestStaging:
         "?branta_id=6SpYCe23r79x0t8rNvmjWqhrg8hen4xz%2FYSXhNJ9HLSYrTRPnm%2BSwAuf6NOKobnwE%2B3MQBNkyTnCtIWp"
         "KKX2E9ZUWVedig%3D%3D&branta_secret=05eb145d-b5cb-452a-9256-0bdfd9a15ffa"
     )
+    USDT_POLYGON = (
+        "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&user=send&currency=USD"
+        "&branta_id=4WYE9J4TjNitdX7AL%2Fw7frpYdKGwSKHCS5zpFXl%2FlQGwpsQi4%2Fgv5MxgujPFzYMbIKqg2rtyYGpzJC"
+        "llEA6Qudbi7lLkiA%3D%3D&branta_secret=c0fab1ee-1526-4efa-b991-9ee138a44cd2"
+    )
+    USDC_POLYGON = (
+        "pol:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B?value=50&user=send&currency=USD"
+        "&branta_id=8rnGGWZcg%2Fg3He1OK6yZ6OLOEyusldwIDaoPImRzWjoUGguyXKotuF8ZlGbCZN9TRqx3PdXjvHDdwffdVvIZxm"
+        "Z00xJvxA%3D%3D&branta_secret=0515039f-2c31-4467-b62a-4e919079a44e"
+    )
+    BARE_OX = "0x278297528c32eCa01295B0d2135984d3442ec963"
 
     @pytest.fixture(autouse=True)
     def _service(self):
@@ -195,3 +206,18 @@ class TestStaging:
         assert result.status == VerifyStatus.Tampered
         assert result.payments is None
         assert "#k-" not in result.verify_url
+
+    async def test_usdt_polygon_matches(self):
+        result = await self.service.verify(self.USDT_POLYGON)
+        assert result.status == VerifyStatus.Match
+        assert result.payments
+
+    async def test_usdc_polygon_matches(self):
+        result = await self.service.verify(self.USDC_POLYGON)
+        assert result.status == VerifyStatus.Match
+        assert result.payments
+
+    async def test_bare_ox_is_unknown(self):
+        result = await self.service.verify(self.BARE_OX)
+        assert result.status == VerifyStatus.Unknown
+        assert result.payments is None
