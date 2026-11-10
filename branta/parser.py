@@ -118,10 +118,12 @@ def _query_from_text(text: str) -> str:
 class QRParser:
     def __init__(self, qr_text: str) -> None:
         self.destinations: list[QrDestination] = []
+        # branta_id / branta_secret from bitcoin: or pol: (legacy "on_chain" names).
         self.on_chain_encryption_text: Optional[str] = None
         self.on_chain_encryption_secret: Optional[str] = None
         self.has_unverifiable_instruction = False
         # Destination types verify may bind for this QR's scheme (match-if-any).
+        # Empty when the QR has no secret-key instruction.
         self.expected_secret_key_types: List[DestinationType] = []
 
         text = _normalize_qr_text(qr_text)

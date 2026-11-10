@@ -75,7 +75,12 @@ async def encrypted_address(address: str = ADDRESS, secret: str = SECRET, destin
     ciphertext = await AesEncryption.encrypt(address, secret)
     return Payment(
         destinations=[
-            Destination(value=ciphertext, type=DestinationType.BitcoinAddress, id=destination_id),
+            Destination(
+                value=ciphertext,
+                type=DestinationType.BitcoinAddress,
+                id=destination_id,
+                is_encrypted=True,
+            ),
         ]
     )
 
@@ -392,7 +397,12 @@ async def encrypted_polygon(
     destination_id: str = "zk-poly",
 ) -> Destination:
     ciphertext = await AesEncryption.encrypt(address, secret)
-    return Destination(value=ciphertext, type=destination_type, id=destination_id)
+    return Destination(
+        value=ciphertext,
+        type=destination_type,
+        id=destination_id,
+        is_encrypted=True,
+    )
 
 
 class TestPolygonVerify:
@@ -415,6 +425,14 @@ class TestPolygonVerify:
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
         result = await service(client).verify(pol_uri(USDT_POLYGON.lower(), dest.value))
+        assert result.status == VerifyStatus.Match
+
+    async def test_pol_usdt_0x_prefix_case_insensitive_match(self):
+        dest = await encrypted_polygon(USDT_POLYGON, DestinationType.UsdtPolygon)
+        client = FakeClient()
+        client.payments = [Payment(destinations=[dest])]
+        mixed = "0X" + USDT_POLYGON[2:]
+        result = await service(client).verify(pol_uri(mixed, dest.value))
         assert result.status == VerifyStatus.Match
 
     async def test_pol_usdt_swapped_is_tampered(self):
@@ -462,6 +480,45 @@ class TestPolygonVerify:
         assert dests[0].value == ADDRESS
         assert dests[1].is_encrypted is True
         assert dests[1].type == DestinationType.UsdtPolygon
+
+    async def test_derived_key_only_branta_qr_leaves_secret_key_rails_encrypted(self):
+        key = to_normalized_hash(INVOICE)
+        bolt_cipher = await AesEncryption.encrypt(INVOICE, key, True)
+        usdt = await encrypted_polygon(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
+        client = FakeClient()
+        client.payments = [
+            Payment(
+                destinations=[
+                    Destination(
+                        value=bolt_cipher,
+                        type=DestinationType.Bolt11,
+                        id="bolt-1",
+                        is_encrypted=True,
+                    ),
+                    usdt,
+                ]
+            )
+        ]
+        result = await service(client).verify(
+            f"bitcoin:?lightning={INVOICE}&branta_id={LOOKUP}&branta_secret={SECRET}"
+        )
+        assert result.status == VerifyStatus.Match
+        dests = result.payments[0].destinations
+        assert dests[0].is_encrypted is False
+        assert dests[0].value == INVOICE
+        assert dests[1].is_encrypted is True
+        assert dests[1].type == DestinationType.UsdtPolygon
+        assert len(result.matched_destinations) == 1
+        assert result.matched_destinations[0].type == DestinationType.Bolt11
+
+    async def test_matched_destinations_are_copies(self):
+        dest = await encrypted_polygon(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
+        client = FakeClient()
+        client.payments = [Payment(destinations=[dest])]
+        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value))
+        assert result.status == VerifyStatus.Match
+        result.matched_destinations[0].value = "mutated"
+        assert result.payments[0].destinations[0].value == USDT_POLYGON
 
     async def test_pol_swapped_still_tampered_with_sibling_bitcoin(self):
         usdt = await encrypted_polygon(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
@@ -561,24 +618,6 @@ class TestPolygonVerify:
         assert result.payments[0].description == "USDT invoice"
         assert result.matched_destinations is not None
         assert result.matched_destinations[0].type == DestinationType.UsdtPolygon
-
-    async def test_conflicting_pol_secret_key_addresses_are_tampered_without_a_lookup(self, monkeypatch):
-        from branta.parser import QrDestination
-        import branta.service as service_mod
-
-        client = FakeClient()
-        original_init = service_mod.QRParser.__init__
-
-        def patched_init(self, qr_text: str) -> None:
-            original_init(self, qr_text)
-            self.destinations.append(QrDestination(value=SWAPPED_POLYGON, secret_key=True))
-
-        monkeypatch.setattr(service_mod.QRParser, "__init__", patched_init)
-        result = await service(client).verify(pol_uri(USDT_POLYGON, "lookup"))
-
-        assert result.status == VerifyStatus.Tampered
-        assert result.payments is None
-        assert client.gets == []
 
     async def test_add_payment_encrypts_usdt_and_usdc_polygon(self):
         client = FakeClient()

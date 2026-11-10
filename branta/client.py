@@ -44,9 +44,12 @@ class BrantaClient:
         self,
         default_options: Optional[BrantaApiOptions] = None,
         session: Optional[aiohttp.ClientSession] = None,
+        *,
+        integration_metrics_token: Optional[str] = None,
     ) -> None:
         self._default_options = default_options
         self._session = session
+        self._integration_metrics_token = integration_metrics_token
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None:
@@ -121,6 +124,8 @@ class BrantaClient:
             if api_key is None:
                 raise BrantaPaymentException("Unauthorized")
             headers["Authorization"] = f"Bearer {api_key}"
+        if self._integration_metrics_token:
+            headers["X-Branta-Integration-Token"] = self._integration_metrics_token
         return headers
 
     def _apply_hmac_headers(
