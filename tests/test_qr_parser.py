@@ -255,3 +255,13 @@ class TestQRParserPol:
         assert parser.destinations[0].secret_key is True
         assert parser.expected_secret_key_types == [DestinationType.BitcoinAddress]
 
+
+class TestQRParserUnrecognizedScheme:
+    def test_unrecognized_scheme_is_opaque_text(self):
+        parser = QRParser("ethereum:0xabc?value=1")
+        assert parser.destination == "ethereum:0xabc?value=1"
+        assert parser.destination_type is None
+        assert parser.destinations[0].secret_key is False
+        assert parser.expected_secret_key_types == []
+        assert parser.has_branta_params() is False
+

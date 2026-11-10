@@ -6,14 +6,14 @@ Skipped unless BRANTA_RUN_INTEGRATION=1 and BRANTA_API_KEY is set.
 from __future__ import annotations
 
 import os
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 import pytest
 
 from branta.enums import BrantaEnvironment, DestinationType, VerifyStatus
 from branta.models import AddPaymentResult, Payment, VerifyResult
 from branta.builder import PaymentBuilder
-from tests.live_helpers import make_service
+from tests.live_helpers import make_service, pol_uri
 
 pytestmark = [
     pytest.mark.skipif(
@@ -27,19 +27,6 @@ pytestmark = [
 ]
 
 TIMEOUT = 60
-
-
-def pol_uri(recipient: str, encrypted: str, secret: str) -> str:
-    query = urlencode(
-        {
-            "value": "50",
-            "user": "send",
-            "currency": "USD",
-            "branta_id": encrypted,
-            "branta_secret": secret,
-        }
-    )
-    return f"pol:{recipient}?{query}"
 
 
 @pytest.mark.timeout(TIMEOUT)

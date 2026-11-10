@@ -89,6 +89,10 @@ class TestVerify:
         assert result.status == VerifyStatus.Match
         assert result.payments is not None
         assert result.payments[0].destinations[0].value == ADDRESS
+        assert result.matched_destinations is not None
+        assert len(result.matched_destinations) == 1
+        assert result.matched_destinations[0].type == DestinationType.BitcoinAddress
+        assert result.matched_destinations[0].value == ADDRESS
         assert result.verify_url == f"http://localhost:3000/v2/verify/{LOOKUP}#k-dest-1={SECRET}"
         assert client.gets == [LOOKUP]
 
@@ -541,6 +545,41 @@ class TestPolygonVerify:
         assert result.status == VerifyStatus.Match
         assert len(result.matched_destinations) == 2
 
+    async def test_pol_description_is_lifted_from_decrypted_metadata(self):
+        dek = "dek-poly"
+        metadata = json.dumps({"description": "USDT invoice"})
+        encrypted_metadata = await AesEncryption.encrypt(metadata, dek)
+        encrypted_dek = await AesEncryption.encrypt(dek, SECRET)
+        dest = await encrypted_polygon(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
+        dest.encrypted_dek = encrypted_dek
+        client = FakeClient()
+        client.payments = [Payment(metadata=encrypted_metadata, destinations=[dest])]
+        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value))
+
+        assert result.status == VerifyStatus.Match
+        assert result.payments is not None
+        assert result.payments[0].description == "USDT invoice"
+        assert result.matched_destinations is not None
+        assert result.matched_destinations[0].type == DestinationType.UsdtPolygon
+
+    async def test_conflicting_pol_secret_key_addresses_are_tampered_without_a_lookup(self, monkeypatch):
+        from branta.parser import QrDestination
+        import branta.service as service_mod
+
+        client = FakeClient()
+        original_init = service_mod.QRParser.__init__
+
+        def patched_init(self, qr_text: str) -> None:
+            original_init(self, qr_text)
+            self.destinations.append(QrDestination(value=SWAPPED_POLYGON, secret_key=True))
+
+        monkeypatch.setattr(service_mod.QRParser, "__init__", patched_init)
+        result = await service(client).verify(pol_uri(USDT_POLYGON, "lookup"))
+
+        assert result.status == VerifyStatus.Tampered
+        assert result.payments is None
+        assert client.gets == []
+
     async def test_add_payment_encrypts_usdt_and_usdc_polygon(self):
         client = FakeClient()
         caller = Payment(destinations=[Destination(value=USDT_POLYGON, type=DestinationType.UsdtPolygon, id="zk-1")])
@@ -562,3 +601,23 @@ class TestPolygonVerify:
         with pytest.raises(BrantaPaymentException, match="cannot be encrypted"):
             await service(client).add_payment(Payment(destinations=[Destination(value=USDT_POLYGON)]))
         assert client.posts == []
+
+    async def test_add_payment_polygon_with_description_encrypts_dek(self):
+        client = FakeClient()
+        payment = Payment(
+            description="Polygon invoice",
+            destinations=[Destination(value=USDT_POLYGON, type=DestinationType.UsdtPolygon, id="zk-1")],
+        )
+        result = await service(client, ["dek-poly", "polygon-secret"]).add_payment(payment)
+
+        assert payment.description == "Polygon invoice"
+        assert payment.destinations[0].value == USDT_POLYGON
+        posted = client.posts[0]
+        assert posted.description is None
+        assert posted.destinations[0].encrypted_dek is not None
+        assert await AesEncryption.decrypt(posted.destinations[0].value, "polygon-secret") == USDT_POLYGON
+        dek = await AesEncryption.decrypt(posted.destinations[0].encrypted_dek, "polygon-secret")
+        assert dek == "dek-poly"
+        metadata = await AesEncryption.decrypt(posted.metadata or "", dek)
+        assert json.loads(metadata)["description"] == "Polygon invoice"
+        assert result.secret == "polygon-secret"
