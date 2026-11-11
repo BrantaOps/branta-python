@@ -36,7 +36,6 @@ def test_stablecoin_destination_type_wire_format():
     assert DestinationType.UsdcBsc.value == "usdc_bsc"
     assert DestinationType.UsdtTron.value == "usdt_tron"
     assert DestinationType.UsdtTon.value == "usdt_ton"
-    assert DestinationType.UsdcTon.value == "usdc_ton"
     assert DestinationType.UsdtSolana.value == "usdt_solana"
     assert DestinationType.UsdcSolana.value == "usdc_solana"
 
@@ -47,7 +46,7 @@ def test_secret_key_uri_families():
     assert SECRET_KEY_URI_FAMILIES["eth"] == (DestinationType.UsdtEthereum, DestinationType.UsdcEthereum)
     assert SECRET_KEY_URI_FAMILIES["bsc"] == (DestinationType.UsdtBsc, DestinationType.UsdcBsc)
     assert SECRET_KEY_URI_FAMILIES["tron"] == (DestinationType.UsdtTron,)
-    assert SECRET_KEY_URI_FAMILIES["ton"] == (DestinationType.UsdtTon, DestinationType.UsdcTon)
+    assert SECRET_KEY_URI_FAMILIES["ton"] == (DestinationType.UsdtTon,)
     assert SECRET_KEY_URI_FAMILIES["sol"] == (DestinationType.UsdtSolana, DestinationType.UsdcSolana)
 
 

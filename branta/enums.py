@@ -28,7 +28,6 @@ class DestinationType(str, Enum):
     UsdcBsc = "usdc_bsc"
     UsdtTron = "usdt_tron"
     UsdtTon = "usdt_ton"
-    UsdcTon = "usdc_ton"
     UsdtSolana = "usdt_solana"
     UsdcSolana = "usdc_solana"
 
@@ -54,7 +53,6 @@ TRON_DESTINATION_TYPES: Tuple[DestinationType, ...] = (DestinationType.UsdtTron,
 
 TON_DESTINATION_TYPES: Tuple[DestinationType, ...] = (
     DestinationType.UsdtTon,
-    DestinationType.UsdcTon,
 )
 
 SOLANA_DESTINATION_TYPES: Tuple[DestinationType, ...] = (
