@@ -38,6 +38,8 @@ def test_stablecoin_destination_type_wire_format():
     assert DestinationType.UsdtTon.value == "usdt_ton"
     assert DestinationType.UsdtSolana.value == "usdt_solana"
     assert DestinationType.UsdcSolana.value == "usdc_solana"
+    # usdc_ton deferred until a platform names a concrete TON USDC jetton.
+    assert "usdc_ton" not in {member.value for member in DestinationType}
 
 
 def test_secret_key_uri_families():
