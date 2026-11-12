@@ -7,7 +7,7 @@ on:
 
 jobs:
   guardrail:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       BRANTA_RUN_INTEGRATION: "1"
       BRANTA_INTEGRATION_METRICS_TOKEN: ${{ secrets.BRANTA_INTEGRATION_METRICS_TOKEN }}
