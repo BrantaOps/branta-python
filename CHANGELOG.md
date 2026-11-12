@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-11-12
+
+### Added
+- Multi-rail stablecoin destination types for `add_payment` / `verify`: `usdt_ethereum`, `usdc_ethereum`, `usdt_bsc`, `usdc_bsc`, `usdt_tron`, `usdt_ton`, `usdt_solana`, `usdc_solana`.
+- Chain URI schemes `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` follow the existing `pol:` pattern: secret-key encrypt, match-if-any within the scheme family, token on the matched destination type. Bare addresses remain `unknown`.
+
+### Changed
+- Package entry exports only the consumer surface. Rail-family helpers (`SECRET_KEY_URI_FAMILIES`, per-family tuples, `is_secret_key_address_type`, and the former `is_polygon_evm_destination_type`) stay internal — import `DestinationType` from `branta` for POST/verify.
+- This release matches `@branta-ops/branta` 4.3.0.
+
+### Notes
+- `usdc_ton` is deferred until a platform names a concrete TON USDC jetton.
+
 ## [4.2.0] - 2026-11-10
 
 ### Added
