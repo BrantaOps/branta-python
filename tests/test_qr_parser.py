@@ -265,3 +265,24 @@ class TestQRParserUnrecognizedScheme:
         assert parser.expected_secret_key_types == []
         assert parser.has_branta_params() is False
 
+
+
+class TestQRParserChainSchemes:
+    @pytest.mark.parametrize(
+        "scheme,address,expected",
+        [
+            ("eth", "0xBF5550253939187432Ef4dccE8089765d3DCb47f", [DestinationType.UsdtEthereum, DestinationType.UsdcEthereum]),
+            ("bsc", "0xBF5550253939187432Ef4dccE8089765d3DCb47f", [DestinationType.UsdtBsc, DestinationType.UsdcBsc]),
+            ("tron", "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb", [DestinationType.UsdtTron]),
+            ("ton", "UQBexample", [DestinationType.UsdtTon]),
+            ("sol", "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf", [DestinationType.UsdtSolana, DestinationType.UsdcSolana]),
+        ],
+    )
+    def test_chain_scheme_maps_to_family(self, scheme, address, expected):
+        parser = QRParser(f"{scheme}:{address}?value=1&branta_id=enc&branta_secret=sec")
+        assert parser.destination == address
+        assert parser.destination_type is None
+        assert parser.destinations[0].secret_key is True
+        assert parser.on_chain_encryption_text == "enc"
+        assert parser.on_chain_encryption_secret == "sec"
+        assert parser.expected_secret_key_types == expected

@@ -1,5 +1,5 @@
 """
-Extra live staging POST→GET combinations beyond the dedicated polygon round-trips.
+Extra live staging POST→GET combinations beyond the multi-rail round-trips.
 
 Skipped unless BRANTA_RUN_INTEGRATION=1 and BRANTA_API_KEY is set.
 """

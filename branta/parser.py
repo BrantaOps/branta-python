@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
-from branta.enums import POLYGON_EVM_DESTINATION_TYPES, DestinationType
+from branta.enums import SECRET_KEY_URI_FAMILIES, DestinationType
 from branta.extensions import get_derived_key_type, is_ark, is_bolt11, is_silent_payment
 
 _COLON_TO_QUESTION = re.compile(r"(?<=:)[^?]*")
@@ -118,7 +118,7 @@ def _query_from_text(text: str) -> str:
 class QRParser:
     def __init__(self, qr_text: str) -> None:
         self.destinations: list[QrDestination] = []
-        # branta_id / branta_secret from bitcoin: or pol: (legacy "on_chain" names).
+        # branta_id / branta_secret from bitcoin: or a chain scheme like pol: (legacy "on_chain" names).
         self.on_chain_encryption_text: Optional[str] = None
         self.on_chain_encryption_secret: Optional[str] = None
         self.has_unverifiable_instruction = False
@@ -133,11 +133,12 @@ class QRParser:
             return
 
         scheme = uri.scheme.lower()
-        if scheme == "pol":
+        secret_key_family = SECRET_KEY_URI_FAMILIES.get(scheme)
+        if secret_key_family is not None:
             dest = _get_destination(text)
             if dest is not None:
                 self.destinations.append(QrDestination(value=dest, type=None, secret_key=True))
-                self.expected_secret_key_types = list(POLYGON_EVM_DESTINATION_TYPES)
+                self.expected_secret_key_types = list(secret_key_family)
             query_params = _parse_query_string(_query_from_text(text))
             if "branta_id" in query_params:
                 self.on_chain_encryption_text = query_params["branta_id"]

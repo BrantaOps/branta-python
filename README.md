@@ -25,8 +25,8 @@ async def main(scanned_or_pasted: str) -> None:
     if result.status == VerifyStatus.Match:
         payment = result.payments[0]
         # Show the card. Link it to result.verify_url.
-        # For pol: rails, token is on result.matched_destinations[i].type
-        # (usdt_polygon / usdc_polygon) — do not infer it from pol:.
+        # For chain URIs (pol:/eth:/…), token is on result.matched_destinations[i].type
+        # — do not infer it from the scheme.
         print(payment.destinations[0].value, result.verify_url)
     elif result.status == VerifyStatus.Tampered:
         # Destination was altered. Warn. Do not show a verified card.
@@ -42,7 +42,7 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 
 `environment` is `Production` on release and `Staging` everywhere else.
 
-On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Polygon EVM rails (`usdt_polygon`, `usdc_polygon`) need a `pol:` URI with the same params — token is on `matched_destinations[].type`, not the `pol:` scheme. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
+On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Stablecoin rails need a chain URI (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`) with the same params — token is on `matched_destinations[].type`, not the scheme. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
 
 A 404 is `unknown`. 5xx, 429, or no network is `incomplete`.
 
@@ -62,21 +62,21 @@ async def main() -> None:
         service.create_payment_builder()
         .set_description("Invoice #12345")
         .add_destination("bc1q…", DestinationType.BitcoinAddress)
-        # Polygon: pass UsdtPolygon / UsdcPolygon explicitly — bare 0x is not auto-detected.
-        # .add_destination("0x…", DestinationType.UsdtPolygon)
+        # Stables: pass the rail type explicitly — bare 0x is not auto-detected.
+        # .add_destination("0x…", DestinationType.UsdtEthereum)
         .set_ttl(600)  # seconds
         .build()
     )
     result = await service.add_payment(payment)
     # Store result.secret with the invoice.
-    # Put branta_id and branta_secret on the invoice QR (bitcoin:… or pol:…).
+    # Put branta_id and branta_secret on the invoice QR (bitcoin:… or pol:/eth:/…).
     print(result.secret, result.verify_url)
 
 
 asyncio.run(main())
 ```
 
-`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, `UsdtPolygon`, and `UsdcPolygon`.
+`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, and the named stable rails (`UsdtPolygon` / `UsdcPolygon`, `UsdtEthereum` / `UsdcEthereum`, `UsdtBsc` / `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana` / `UsdcSolana`).
 
 ## Per-call options
 
