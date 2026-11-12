@@ -29,7 +29,6 @@ def test_does_not_export_rail_family_internals():
         "TON_DESTINATION_TYPES",
         "SOLANA_DESTINATION_TYPES",
         "SECRET_KEY_URI_FAMILIES",
-        "is_polygon_evm_destination_type",
         "is_secret_key_address_type",
     ):
         assert not hasattr(branta, name), name

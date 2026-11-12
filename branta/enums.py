@@ -72,10 +72,6 @@ SECRET_KEY_URI_FAMILIES: Dict[str, Tuple[DestinationType, ...]] = {
 }
 
 
-def is_polygon_evm_destination_type(destination_type: DestinationType) -> bool:
-    return destination_type in POLYGON_EVM_DESTINATION_TYPES
-
-
 def is_secret_key_address_type(destination_type: DestinationType) -> bool:
     """Address rails encrypted with a random branta_secret (not a derived key)."""
     return destination_type == DestinationType.BitcoinAddress or any(

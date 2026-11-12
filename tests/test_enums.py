@@ -2,7 +2,6 @@ from branta.enums import (
     POLYGON_EVM_DESTINATION_TYPES,
     SECRET_KEY_URI_FAMILIES,
     DestinationType,
-    is_polygon_evm_destination_type,
     is_secret_key_address_type,
 )
 
@@ -14,19 +13,6 @@ def test_destination_type_wire_format_is_exact():
     assert DestinationType.SilentPayment.value == "silent_payment"
     assert DestinationType.UsdtPolygon.value == "usdt_polygon"
     assert DestinationType.UsdcPolygon.value == "usdc_polygon"
-
-
-def test_polygon_evm_helpers():
-    assert POLYGON_EVM_DESTINATION_TYPES == (
-        DestinationType.UsdtPolygon,
-        DestinationType.UsdcPolygon,
-    )
-    assert is_polygon_evm_destination_type(DestinationType.UsdtPolygon)
-    assert is_polygon_evm_destination_type(DestinationType.UsdcPolygon)
-    assert not is_polygon_evm_destination_type(DestinationType.BitcoinAddress)
-    assert is_secret_key_address_type(DestinationType.BitcoinAddress)
-    assert is_secret_key_address_type(DestinationType.UsdtPolygon)
-    assert not is_secret_key_address_type(DestinationType.Bolt11)
 
 
 def test_stablecoin_destination_type_wire_format():
@@ -43,6 +29,10 @@ def test_stablecoin_destination_type_wire_format():
 
 
 def test_secret_key_uri_families():
+    assert POLYGON_EVM_DESTINATION_TYPES == (
+        DestinationType.UsdtPolygon,
+        DestinationType.UsdcPolygon,
+    )
     assert set(SECRET_KEY_URI_FAMILIES) == {"pol", "eth", "bsc", "tron", "ton", "sol"}
     assert SECRET_KEY_URI_FAMILIES["pol"] == POLYGON_EVM_DESTINATION_TYPES
     assert SECRET_KEY_URI_FAMILIES["eth"] == (DestinationType.UsdtEthereum, DestinationType.UsdcEthereum)
@@ -59,4 +49,3 @@ def test_is_secret_key_address_type_covers_all_stable_rails():
             assert is_secret_key_address_type(destination_type)
     for destination_type in (DestinationType.Bolt11, DestinationType.ArkAddress, DestinationType.SilentPayment):
         assert not is_secret_key_address_type(destination_type)
-    assert not is_polygon_evm_destination_type(DestinationType.UsdtEthereum)
