@@ -30,6 +30,10 @@ _STATUS_TEXT = {
     504: "GatewayTimeout",
 }
 
+# Default wall-clock timeout for every HTTP call (GET, POST, health-check).
+HTTP_TIMEOUT_SECONDS = 30
+_HTTP_TIMEOUT = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
+
 
 def _hmac_sha256_hex(secret: str, message: str) -> str:
     return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -53,7 +57,7 @@ class BrantaClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(timeout=_HTTP_TIMEOUT)
         return self._session
 
     async def get_payments(
@@ -67,7 +71,7 @@ class BrantaClient:
 
         session = await self._get_session()
         try:
-            async with session.get(url, headers=headers) as response:
+            async with session.get(url, headers=headers, timeout=_HTTP_TIMEOUT) as response:
                 if response.status == 404:
                     return []
                 if not response.ok:
@@ -98,7 +102,9 @@ class BrantaClient:
         self._apply_hmac_headers(headers, base_url, body, options)
 
         session = await self._get_session()
-        async with session.post(f"{base_url}/v2/payments", headers=headers, data=body) as response:
+        async with session.post(
+            f"{base_url}/v2/payments", headers=headers, data=body, timeout=_HTTP_TIMEOUT
+        ) as response:
             if not response.ok:
                 raise BrantaPaymentException(_STATUS_TEXT.get(response.status, str(response.status)))
             text = await response.text()
@@ -114,7 +120,9 @@ class BrantaClient:
         headers = self._build_headers(options, require_api_key=True)
 
         session = await self._get_session()
-        async with session.get(f"{base_url}/v2/api-keys/health-check", headers=headers) as response:
+        async with session.get(
+            f"{base_url}/v2/api-keys/health-check", headers=headers, timeout=_HTTP_TIMEOUT
+        ) as response:
             return response.ok
 
     def _build_headers(self, options: Optional[BrantaApiOptions], require_api_key: bool) -> dict:

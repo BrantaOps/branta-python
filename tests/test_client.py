@@ -38,8 +38,14 @@ class _FakeResponse:
 class _FakeSession:
     def __init__(self, response: _FakeResponse) -> None:
         self._response = response
+        self.last_timeout = None
 
-    def get(self, url: str, headers: dict | None = None) -> _FakeResponse:
+    def get(self, url: str, headers: dict | None = None, **kwargs: object) -> _FakeResponse:
+        self.last_timeout = kwargs.get("timeout")
+        return self._response
+
+    def post(self, url: str, headers: dict | None = None, data: object = None, **kwargs: object) -> _FakeResponse:
+        self.last_timeout = kwargs.get("timeout")
         return self._response
 
 
@@ -141,5 +147,25 @@ async def test_empty_body_returns_an_empty_list() -> None:
 async def test_server_error_raises_incomplete() -> None:
     client = client_with_response("nope", status=500)
 
+    with pytest.raises(IncompleteError):
+        await client.get_payments("value")
+
+
+async def test_get_payments_passes_30s_timeout() -> None:
+    from branta.client import HTTP_TIMEOUT_SECONDS, _HTTP_TIMEOUT
+
+    assert HTTP_TIMEOUT_SECONDS == 30
+    client = client_with_response([])
+    await client.get_payments("value")
+    assert client._session.last_timeout is _HTTP_TIMEOUT  # type: ignore[union-attr]
+
+
+async def test_get_payments_timeout_is_incomplete() -> None:
+    class _TimeoutSession:
+        def get(self, url: str, headers: dict | None = None, **kwargs: object) -> object:
+            raise TimeoutError("timed out")
+
+    options = BrantaApiOptions(environment=BrantaEnvironment.Localhost, api_key="key")
+    client = BrantaClient(default_options=options, session=_TimeoutSession())  # type: ignore[arg-type]
     with pytest.raises(IncompleteError):
         await client.get_payments("value")

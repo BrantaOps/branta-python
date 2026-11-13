@@ -44,7 +44,7 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 
 On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Stablecoin rails need a chain URI (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`) with the same params — token is on `matched_destinations[].type`, not the scheme. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
 
-A 404 is `unknown`. 5xx, 429, or no network is `incomplete`.
+A 404 is `unknown`. 5xx, 429, no network, or a 30s HTTP timeout is `incomplete`.
 
 ## Receive
 
