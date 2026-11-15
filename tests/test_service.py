@@ -852,6 +852,20 @@ class TestEvmRailVerify:
         assert result.status == VerifyStatus.Unknown
         assert client.gets == []
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ethereum://[bad/transfer",
+            "bitcoin://[bad",
+            "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@" + "9" * 5000 + "/transfer?address=" + SWAPPED_EVM,
+        ],
+    )
+    async def test_unparseable_input_is_unknown_and_does_not_throw(self, text):
+        client = FakeClient()
+        result = await service(client).verify(text)
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
+
     @pytest.mark.parametrize("address", [USDT_POLYGON, USDT_TRON, USDT_TON, USDC_SOLANA])
     async def test_bare_address_is_unknown(self, address):
         client = FakeClient()

@@ -37,7 +37,12 @@ def _normalize_qr_text(qr_text: str) -> str:
 
 
 def _try_parse_url(text: str):
-    parsed = urlparse(text)
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        # e.g. an unbalanced "[" in the authority. The URL constructor in the JS SDK
+        # throws here and the caller treats the text as an untyped destination.
+        return None
     if not parsed.scheme or not re.match(r"^[A-Za-z][A-Za-z0-9+.\-]*$", parsed.scheme):
         return None
     return parsed
@@ -110,11 +115,12 @@ def _parse_query_string(query: str) -> Dict[str, str]:
 
 
 def _query_from_text(text: str) -> str:
+    # A "?" after the "#" belongs to the fragment, not the query.
+    hash_idx = text.find("#")
+    if hash_idx != -1:
+        text = text[:hash_idx]
     q = text.find("?")
-    if q == -1:
-        return ""
-    hash_idx = text.find("#", q)
-    return text[q : len(text) if hash_idx == -1 else hash_idx]
+    return "" if q == -1 else text[q:]
 
 
 def _eip681_path(text: str) -> str:
@@ -133,7 +139,11 @@ def _parse_eip681(text: str) -> Optional[Tuple[DestinationType, str]]:
     match = _EIP681_PATH.fullmatch(_eip681_path(text))
     if match is None:
         return None
-    destination_type = evm_token_type(int(match.group(2)), match.group(1))
+    chain_digits = match.group(2).lstrip("0") or "0"
+    if len(chain_digits) > 15:
+        # Not a safe integer. Also keeps int() clear of Python's digit-count limit.
+        return None
+    destination_type = evm_token_type(int(chain_digits), match.group(1))
     if destination_type is None:
         return None
     address = _parse_query_string(_query_from_text(text)).get("address")

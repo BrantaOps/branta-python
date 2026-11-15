@@ -239,6 +239,41 @@ DEPOSIT = "0x1111111111111111111111111111111111111111"
 BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 
+class TestQRParserEip681EdgeCases:
+    def test_query_after_fragment_is_not_read(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer#x?address={DEPOSIT}&branta_id=a&branta_secret=b"
+        )
+        assert parser.destination_type is None
+        assert parser.on_chain_encryption_text is None
+        assert parser.expected_secret_key_types == []
+
+    def test_fragment_after_query_is_dropped(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}&branta_id=a&branta_secret=b#address=0x2"
+        )
+        assert parser.destination == DEPOSIT
+        assert parser.on_chain_encryption_text == "a"
+
+    def test_bitcoin_query_after_fragment_is_not_read(self):
+        parser = QRParser("bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh#x?branta_id=a&branta_secret=b")
+        assert parser.on_chain_encryption_text is None
+
+    def test_digit_count_beyond_pythons_int_limit_is_untyped(self):
+        parser = QRParser(f"ethereum:{BASE_USDC}@{'9' * 5000}/transfer?address={DEPOSIT}")
+        assert parser.destination_type is None
+
+    def test_leading_zero_chain_id_still_selects_the_rail(self):
+        parser = QRParser(f"ethereum:{BASE_USDC}@{'0' * 4500}8453/transfer?address={DEPOSIT}")
+        assert parser.destination_type == DestinationType.UsdcBase
+
+    @pytest.mark.parametrize("text", ["ethereum://[bad/transfer", "bitcoin://[bad", "lightning://[bad"])
+    def test_unparseable_authority_is_an_untyped_destination(self, text):
+        parser = QRParser(text)
+        assert parser.destination == text
+        assert parser.destination_type is None
+
+
 class TestQRParserEip681:
     def test_binds_deposit_address_and_one_token(self):
         parser = QRParser(
