@@ -44,7 +44,7 @@ class EvmTokenRail:
     type: DestinationType
 
 
-# EIP-681 ethereum:<contract>@<chainId>/transfer rails.
+# ERC-681 ethereum:<contract>@<chainId>/transfer rails.
 # Chain id plus token contract select one destination type.
 # Contracts are lowercase so lookup is case-insensitive.
 EVM_TOKEN_RAILS: Tuple[EvmTokenRail, ...] = (
@@ -69,8 +69,9 @@ def evm_token_type(chain_id: int, contract: str) -> Optional[DestinationType]:
     return None
 
 
-# Address rails add_payment encrypts with one UUID.
-# Tron, TON, and Solana stay here so POST still works. They have no verify URI.
+# Address rails that add_payment encrypts with one UUID secret.
+# Tron, TON, and Solana are included because add_payment still encrypts them.
+# They have no verify URI.
 _UUID_SECRET_DESTINATION_TYPES = frozenset(
     {
         DestinationType.BitcoinAddress,

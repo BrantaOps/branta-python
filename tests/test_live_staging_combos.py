@@ -146,4 +146,7 @@ async def test_staging_live_combos():
         VerifyStatus.Unknown,
     )
     # The old pol: scheme no longer verifies, even with valid params.
-    await must_status(f"pol:{usdt}?branta_id={quote(enc, safe='')}&branta_secret={quote(added.secret, safe='')}", VerifyStatus.Unknown)
+    await must_status(
+        f"pol:{usdt}?branta_id={quote(enc, safe='')}&branta_secret={quote(added.secret, safe='')}",
+        VerifyStatus.Unknown,
+    )

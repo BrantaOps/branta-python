@@ -239,7 +239,7 @@ DEPOSIT = "0x1111111111111111111111111111111111111111"
 BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 
-class TestQRParserEip681EdgeCases:
+class TestQRParserErc681EdgeCases:
     def test_query_after_fragment_is_not_read(self):
         parser = QRParser(
             f"ethereum:{BASE_USDC}@8453/transfer#x?address={DEPOSIT}&branta_id=a&branta_secret=b"
@@ -254,6 +254,13 @@ class TestQRParserEip681EdgeCases:
         )
         assert parser.destination == DEPOSIT
         assert parser.on_chain_encryption_text == "a"
+
+    def test_branta_params_in_the_fragment_are_not_read(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}#&branta_id=abc&branta_secret=1234"
+        )
+        assert parser.destination_type == DestinationType.UsdcBase
+        assert parser.on_chain_encryption_text is None
 
     def test_bitcoin_query_after_fragment_is_not_read(self):
         parser = QRParser("bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh#x?branta_id=a&branta_secret=b")
@@ -274,7 +281,7 @@ class TestQRParserEip681EdgeCases:
         assert parser.destination_type is None
 
 
-class TestQRParserEip681:
+class TestQRParserErc681:
     def test_binds_deposit_address_and_one_token(self):
         parser = QRParser(
             f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}&uint256=1000000"
@@ -344,13 +351,6 @@ class TestQRParserEip681:
         )
         assert parser.destination == DEPOSIT
         assert parser.on_chain_encryption_text == f"abc&address={other}"
-
-    def test_fragment_is_not_read_as_query(self):
-        parser = QRParser(
-            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}#&branta_id=abc&branta_secret=1234"
-        )
-        assert parser.destination_type == DestinationType.UsdcBase
-        assert parser.on_chain_encryption_text is None
 
     @pytest.mark.parametrize(
         "uri",
