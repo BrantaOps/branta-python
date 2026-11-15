@@ -25,8 +25,8 @@ async def main(scanned_or_pasted: str) -> None:
     if result.status == VerifyStatus.Match:
         payment = result.payments[0]
         # Show the card. Link it to result.verify_url.
-        # For chain URIs (pol:/eth:/…), token is on result.matched_destinations[i].type
-        # — do not infer it from the scheme.
+        # For EVM stablecoins, the token is on result.matched_destinations[i].type.
+        # Pay from matched_destinations, not from the raw QR.
         print(payment.destinations[0].value, result.verify_url)
     elif result.status == VerifyStatus.Tampered:
         # Destination was altered. Warn. Do not show a verified card.
@@ -42,7 +42,7 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 
 `environment` is `Production` on release and `Staging` everywhere else.
 
-On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Stablecoin rails need a chain URI (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`) with the same params — token is on `matched_destinations[].type`, not the scheme. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
+On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. EVM stablecoins (USDT and USDC on Ethereum, Polygon, BNB Smart Chain, Base, and Arbitrum) need an ERC-681 `ethereum:<token-contract>@<chain-id>/transfer?address=<deposit>` URI with the same params. The chain id and token contract select the destination type, and `uint256` is not part of the match. `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` do not verify. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
 
 A 404 is `unknown`. 5xx, 429, no network, or a 30s HTTP timeout is `incomplete`.
 
@@ -69,14 +69,14 @@ async def main() -> None:
     )
     result = await service.add_payment(payment)
     # Store result.secret with the invoice.
-    # Put branta_id and branta_secret on the invoice QR (bitcoin:… or pol:/eth:/…).
+    # Put branta_id and branta_secret on the invoice QR (bitcoin:… or the ERC-681 ethereum:… transfer URI).
     print(result.secret, result.verify_url)
 
 
 asyncio.run(main())
 ```
 
-`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, and the named stable rails (`UsdtPolygon` / `UsdcPolygon`, `UsdtEthereum` / `UsdcEthereum`, `UsdtBsc` / `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana` / `UsdcSolana`).
+`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, and the named stable rails (`UsdtPolygon` / `UsdcPolygon`, `UsdtEthereum` / `UsdcEthereum`, `UsdtBsc` / `UsdcBsc`, `UsdtBase` / `UsdcBase`, `UsdtArbitrum` / `UsdcArbitrum`, `UsdtTron`, `UsdtTon`, `UsdtSolana` / `UsdcSolana`). Tron, TON, and Solana rails encrypt on `add_payment` but have no verify URI.
 
 ## Per-call options
 

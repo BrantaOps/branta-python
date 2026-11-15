@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2026-11-15
+
+### Added
+- `usdt_base`, `usdc_base`, `usdt_arbitrum`, and `usdc_arbitrum`. `add_payment` encrypts them with the same UUID secret as the other stablecoin address rails.
+
+### Changed
+- EVM USDT and USDC verify reads ERC-681 `ethereum:<token-contract>@<chain-id>/transfer?address=<deposit>&uint256=<amount>`. The chain id and token contract select one destination type. `uint256` is not part of the match.
+- `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` no longer verify. `add_payment` still encrypts `usdt_tron`, `usdt_ton`, `usdt_solana`, and `usdc_solana`.
+- This release matches `@branta-ops/branta` 4.4.0.
+
 ## [4.3.1] - 2026-11-13
 
 ### Fixed

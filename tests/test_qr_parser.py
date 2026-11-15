@@ -1,6 +1,6 @@
 import pytest
 
-from branta.enums import DestinationType
+from branta.enums import EVM_TOKEN_RAILS, DestinationType
 from branta.parser import QRParser
 
 
@@ -235,22 +235,139 @@ class TestQRParserCombined:
         assert parser.destinations[2].value == "ark1testaddress"
 
 
-class TestQRParserPol:
-    def test_pol_uri_is_secret_key_without_token_type(self):
-        parser = QRParser(
-            "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&branta_id=enc&branta_secret=sec"
-        )
-        assert parser.destination == "0x278297528c32eCa01295B0d2135984d3442ec963"
-        assert parser.destination_type is None
-        assert parser.destinations[0].secret_key is True
-        assert parser.on_chain_encryption_text == "enc"
-        assert parser.on_chain_encryption_secret == "sec"
-        assert parser.expected_secret_key_types == [
-            DestinationType.UsdtPolygon,
-            DestinationType.UsdcPolygon,
-        ]
+DEPOSIT = "0x1111111111111111111111111111111111111111"
+BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
-    def test_bitcoin_uri_expects_bitcoin_secret_key_family(self):
+
+class TestQRParserEip681:
+    def test_binds_deposit_address_and_one_token(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}&uint256=1000000"
+            "&branta_id=abc%2Bdef%3D&branta_secret=1234"
+        )
+        assert parser.destination == DEPOSIT
+        assert parser.destination_type == DestinationType.UsdcBase
+        assert len(parser.destinations) == 1
+        assert parser.destinations[0].secret_key is True
+        assert parser.expected_secret_key_types == [DestinationType.UsdcBase]
+        assert parser.on_chain_encryption_text == "abc+def="
+        assert parser.on_chain_encryption_secret == "1234"
+
+    def test_matches_contract_case_insensitively(self):
+        address = "0x278297528c32eCa01295B0d2135984d3442ec963"
+        parser = QRParser(
+            f"ethereum:0xC2132D05D31C914A87C6611C10748AEB04B58E8F@137/transfer?address={address}&uint256=21"
+        )
+        assert parser.destination == address
+        assert parser.destination_type == DestinationType.UsdtPolygon
+        assert parser.expected_secret_key_types == [DestinationType.UsdtPolygon]
+        assert parser.on_chain_encryption_text is None
+
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    def test_every_rail_binds_deposit_and_one_type(self, rail):
+        parser = QRParser(
+            f"ethereum:{rail.contract}@{rail.chain_id}/transfer?address={DEPOSIT}&uint256=1"
+            "&branta_id=id&branta_secret=sec"
+        )
+        assert parser.destination == DEPOSIT
+        assert parser.destination_type == rail.type
+        assert parser.expected_secret_key_types == [rail.type]
+        assert parser.on_chain_encryption_text == "id"
+        assert parser.on_chain_encryption_secret == "sec"
+
+    def test_uint256_is_not_part_of_the_binding(self):
+        base = f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234"
+        a = QRParser(base + "&uint256=1")
+        b = QRParser(base + "&uint256=999999999")
+        assert a.destination == b.destination == DEPOSIT
+        assert a.expected_secret_key_types == b.expected_secret_key_types
+
+    def test_one_leading_slash_is_tolerated(self):
+        parser = QRParser(f"ethereum:/{BASE_USDC}@8453/transfer?address={DEPOSIT}")
+        assert parser.destination_type == DestinationType.UsdcBase
+
+    def test_scheme_is_case_insensitive(self):
+        parser = QRParser(f"ETHEREUM:{BASE_USDC}@8453/transfer?address={DEPOSIT}")
+        assert parser.destination_type == DestinationType.UsdcBase
+
+    def test_zero_x_upper_case_deposit_is_accepted(self):
+        deposit = "0X1111111111111111111111111111111111111111"
+        parser = QRParser(f"ethereum:{BASE_USDC}@8453/transfer?address={deposit}")
+        assert parser.destination == deposit
+        assert parser.destination_type == DestinationType.UsdcBase
+
+    def test_first_address_param_wins(self):
+        other = "0x2222222222222222222222222222222222222222"
+        parser = QRParser(f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}&address={other}")
+        assert parser.destination == DEPOSIT
+
+    def test_percent_encoded_ampersand_stays_inside_branta_id(self):
+        other = "0x2222222222222222222222222222222222222222"
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}"
+            f"&branta_id=abc%26address%3D{other}&branta_secret=1234"
+        )
+        assert parser.destination == DEPOSIT
+        assert parser.on_chain_encryption_text == f"abc&address={other}"
+
+    def test_fragment_is_not_read_as_query(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@8453/transfer?address={DEPOSIT}#&branta_id=abc&branta_secret=1234"
+        )
+        assert parser.destination_type == DestinationType.UsdcBase
+        assert parser.on_chain_encryption_text is None
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            # No chain id.
+            f"ethereum:{BASE_USDC}/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            # Payment-request prefix and ENS-style forms.
+            f"ethereum:pay-{BASE_USDC}@8453/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            f"ethereum:usdc.eth@8453/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            # // makes the contract an authority, not a path.
+            f"ethereum://{BASE_USDC}@8453/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            # Only transfer is a payment. approve and transferFrom are not.
+            f"ethereum:{BASE_USDC}@8453/approve?address={DEPOSIT}&uint256=1&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@8453/transferFrom?address={DEPOSIT}&uint256=1&branta_id=abc&branta_secret=1234",
+            # Path parameters after the function name.
+            f"ethereum:{BASE_USDC}@8453/transfer;x=1?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            # Chain id forms that are not plain digits.
+            f"ethereum:{BASE_USDC}@0x2105/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@8453.0/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@8453e0/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@-8453/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234",
+            # No address, a truncated address, or an ENS recipient.
+            f"ethereum:{BASE_USDC}@8453/transfer?uint256=1&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@8453/transfer?address=0x1111&branta_id=abc&branta_secret=1234",
+            f"ethereum:{BASE_USDC}@8453/transfer?address=merchant.eth&branta_id=abc&branta_secret=1234",
+        ],
+    )
+    def test_incomplete_forms_do_not_bind(self, uri):
+        parser = QRParser(uri)
+        assert parser.expected_secret_key_types == []
+        assert parser.on_chain_encryption_text is None
+        assert parser.on_chain_encryption_secret is None
+        assert parser.destinations[0].secret_key is False
+        assert parser.destinations[0].type is None
+
+    def test_unknown_contract_does_not_bind(self):
+        parser = QRParser(
+            f"ethereum:0x0000000000000000000000000000000000000001@1/transfer?address={DEPOSIT}"
+            "&branta_id=abc&branta_secret=1234"
+        )
+        assert parser.destination_type is None
+        assert parser.expected_secret_key_types == []
+        assert parser.on_chain_encryption_text is None
+
+    def test_contract_on_the_wrong_chain_does_not_bind(self):
+        parser = QRParser(
+            f"ethereum:{BASE_USDC}@1/transfer?address={DEPOSIT}&branta_id=abc&branta_secret=1234"
+        )
+        assert parser.expected_secret_key_types == []
+        assert parser.on_chain_encryption_text is None
+
+    def test_bitcoin_uri_expects_bitcoin_secret_key_type(self):
         parser = QRParser("bitcoin:bc1qmerchant?branta_id=enc&branta_secret=sec")
         assert parser.destinations[0].secret_key is True
         assert parser.expected_secret_key_types == [DestinationType.BitcoinAddress]
@@ -266,23 +383,23 @@ class TestQRParserUnrecognizedScheme:
         assert parser.has_branta_params() is False
 
 
-
-class TestQRParserChainSchemes:
+class TestQRParserRemovedChainSchemes:
     @pytest.mark.parametrize(
-        "scheme,address,expected",
+        "scheme,address",
         [
-            ("eth", "0xBF5550253939187432Ef4dccE8089765d3DCb47f", [DestinationType.UsdtEthereum, DestinationType.UsdcEthereum]),
-            ("bsc", "0xBF5550253939187432Ef4dccE8089765d3DCb47f", [DestinationType.UsdtBsc, DestinationType.UsdcBsc]),
-            ("tron", "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb", [DestinationType.UsdtTron]),
-            ("ton", "UQBexample", [DestinationType.UsdtTon]),
-            ("sol", "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf", [DestinationType.UsdtSolana, DestinationType.UsdcSolana]),
+            ("pol", "0x278297528c32eCa01295B0d2135984d3442ec963"),
+            ("eth", "0xBF5550253939187432Ef4dccE8089765d3DCb47f"),
+            ("bsc", "0xBF5550253939187432Ef4dccE8089765d3DCb47f"),
+            ("tron", "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"),
+            ("ton", "EQDtFpEwcFAEcRe5mLVh2N6C0y-_tur3BYOM93pEZPw390by"),
+            ("sol", "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf"),
         ],
     )
-    def test_chain_scheme_maps_to_family(self, scheme, address, expected):
-        parser = QRParser(f"{scheme}:{address}?value=1&branta_id=enc&branta_secret=sec")
-        assert parser.destination == address
+    def test_scheme_does_not_bind(self, scheme, address):
+        parser = QRParser(f"{scheme}:{address}?branta_id=enc%2Bid&branta_secret=secret")
         assert parser.destination_type is None
-        assert parser.destinations[0].secret_key is True
-        assert parser.on_chain_encryption_text == "enc"
-        assert parser.on_chain_encryption_secret == "sec"
-        assert parser.expected_secret_key_types == expected
+        assert parser.expected_secret_key_types == []
+        assert parser.on_chain_encryption_text is None
+        assert parser.on_chain_encryption_secret is None
+        assert parser.has_branta_params() is False
+        assert parser.destinations[0].secret_key is False

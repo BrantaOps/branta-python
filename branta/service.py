@@ -245,7 +245,7 @@ class BrantaService:
                 continue
             if destination.type is None or not is_secret_key_address_type(destination.type):
                 continue
-            # Only this QR's rail family (e.g. polygon when scanning pol:). Empty = none.
+            # Only the type this scan names (one ERC-681 rail, or bitcoin). Empty = none.
             if destination.type not in expected_secret_key_types:
                 continue
             if encryption_key is None:
@@ -255,7 +255,7 @@ class BrantaService:
             except Exception:
                 continue
             decrypted_expected_rail = True
-            # Match-if-any within the family: a sibling rail with a different address stays encrypted.
+            # A decrypted value that is not the scanned address stays encrypted.
             if expected_secret_key_address is not None and not _addresses_match(
                 decrypted, expected_secret_key_address
             ):
@@ -267,7 +267,7 @@ class BrantaService:
             if destination.id is not None and destination.id not in keys:
                 keys[destination.id] = encryption_key
             await self._try_decrypt_metadata(payment, destination, encryption_key)
-        # Tampered only when a family rail decrypted and none matched the scanned address.
+        # Tampered only when a destination of the scanned type decrypted and none matched the address.
         if expected_secret_key_address is not None and not secret_key_bound and decrypted_expected_rail:
             raise TamperedError()
         return secret_key_bound
