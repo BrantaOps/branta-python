@@ -94,6 +94,14 @@ class TestGetHashZkType:
 
 
 class TestToNormalizedHash:
+    def test_fixed_vector_matches_every_sdk(self):
+        assert to_normalized_hash("test") == "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08"
+        assert to_normalized_hash("TEST") == "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08"
+        assert (
+            to_normalized_hash("LNBC10U1PTestInvoice")
+            == "261D7974DC0541402A222AC17973D3FF412878C1C179FCD4D866094D610B4496"
+        )
+
     def test_produces_uppercase_hex(self):
         result = to_normalized_hash("lnbc100n1ptest")
         assert result == result.upper()
