@@ -3,7 +3,24 @@ import pytest
 from branta.encryption import AesEncryption
 
 
+# Fixed vectors. Every Branta SDK asserts the same strings, so a payment written by one SDK
+# stays readable and findable by every other. Do not regenerate these from this code.
+FIXED_VECTOR = "mPIKHc3ywVlsBHf3Lv2Rwpz2+fKE0kgUePq2m4fPIUidMuGEHVIB"
+# Key is the normalized hash of "LNBC10U1PTestInvoice". The value is encrypted lowercased.
+DERIVED_KEY = "261D7974DC0541402A222AC17973D3FF412878C1C179FCD4D866094D610B4496"
+DERIVED_VECTOR = "WywBRexAiHTi2mnHK/W1DIN79bF1XVhU3BdC3DWpUsdhs5NMbdyZyzWsdjfuFgIV"
+
+
 class TestAesEncryption:
+    async def test_fixed_vector_matches_every_sdk(self):
+        assert await AesEncryption.encrypt("hello world", "my-secret", True) == FIXED_VECTOR
+
+    async def test_decrypt_fixed_vector_returns_plaintext(self):
+        assert await AesEncryption.decrypt(FIXED_VECTOR, "my-secret") == "hello world"
+
+    async def test_derived_key_fixed_vector_matches_every_sdk(self):
+        assert await AesEncryption.encrypt("lnbc10u1ptestinvoice", DERIVED_KEY, True) == DERIVED_VECTOR
+
     async def test_encrypt_decrypt_roundtrip(self):
         value = "hello world"
         secret = "my-secret"
