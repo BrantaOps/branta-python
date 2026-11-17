@@ -1,6 +1,27 @@
 # Branta Python SDK
 
-Feature-parity Python port of the Branta SDK. Mirrors the other Branta 4.x SDKs. A public method added or changed here has to be reflected across the SDK family.
+Python SDK published on PyPI as `branta`. Consumers (wallets, platforms, parent platforms) call `BrantaService` to look up or post payments to Branta's V2 API. `README.md` is the install, constructor, and samples guide.
+
+## Behavior contract
+
+What `verify` returns and how ERC-681 is parsed: [Status rules](https://developer.branta.pro/setup/send/status-rules). Which rails encrypt with what key: [Encryption](https://developer.branta.pro/setup/receive/encryption). Send handling is on [Send](https://developer.branta.pro/setup/send), and the type list on [Destination types](https://developer.branta.pro/destination-types). Do not restate them here. Change the docs first, then the SDK.
+
+Invariants that break silently. Check them before you change `verify` or `addPayment`:
+
+- A raw on-chain address (including `tb1` / `bcrt1` / bare `0x`) is `unknown` and does not GET.
+- A swapped address is `tampered`. `unknown`, `tampered`, and `incomplete` are returned, never thrown.
+- The token is `matchedDestinations[].type`, never the URI scheme.
+- A logo-domain mismatch throws. Every other lookup failure is a status.
+- `addPayment` encrypts a copy and leaves the caller's `Payment` unchanged.
+- Keep parity with every 4.x Branta SDK. A public method added or changed here is mirrored in each of them.
+
+## Python specifics
+
+- The contract's names are snake_case here: `add_payment`, `matched_destinations`, `verify_url`.
+- `Destination.id` is sent as `zk_id`. `zk: true` is always sent.
+- `verify` parses first. Multi-value payloads go through `QRParser` whether they came from a scan or a paste.
+- `DestinationType` is only what `add_payment` accepts. It also includes `usdt_tron`, `usdt_ton`, `usdt_solana`, and `usdc_solana`. They can be posted but no URI verifies them, and they are not on the public Destination types page. There is no `usdc_ton`.
+- Do not reintroduce `BrantaClientOptions`, `PrivacyMode`, `BrantaServerBaseUrl`, `set_zk`, or `get_payments_by_qr_code`.
 
 ## Package layout
 
@@ -25,23 +46,9 @@ pip install -e ".[dev]"
 - `BRANTA_RUN_INTEGRATION=1 BRANTA_API_KEY=… pytest tests/` — include multi-rail round-trips and live combos
 - `coverage run -m pytest tests/ && coverage report` — with coverage
 
-## Key behaviors to preserve
-
-- **Unencrypted destinations are not supported.** `verify` is the only lookup. A raw on-chain address (including `tb1` / `bcrt1` / bare `0x`) is `unknown` and does not GET. `add_payment` encrypts every destination; types that cannot be encrypted throw.
-- **`DestinationType` is only what `add_payment` accepts:** `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`, plus stable rails `usdt_polygon` / `usdc_polygon`, `usdt_ethereum` / `usdc_ethereum`, `usdt_bsc` / `usdc_bsc`, `usdt_base` / `usdc_base`, `usdt_arbitrum` / `usdc_arbitrum`, `usdt_tron`, `usdt_ton`, `usdt_solana` / `usdc_solana`. Pass stable types explicitly. BIP21 extras this SDK cannot encrypt (`lno`, `pay`, non-bolt11 `lightning`) make `verify()` return `unknown`. `usdc_ton` is deferred.
-- **EVM stablecoin verify is ERC-681:** `ethereum:<contract>@<chainId>/transfer?address=<deposit>&uint256=<amount>` plus `branta_id` / `branta_secret`. Chain id plus token contract select exactly one destination type (`EVM_TOKEN_RAILS`, internal). `uint256` is not bound. `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` do not verify and do not GET. `add_payment` still encrypts `usdt_tron`, `usdt_ton`, `usdt_solana`, and `usdc_solana`. A bare `0x` address is `unknown`.
-- **`verify()` returns `VerifyResult`.** `match` includes `payments`, `matched_destinations`, and `verify_url`. `unknown`, `tampered`, and `incomplete` include only `verify_url`. A swapped address is `tampered`. A 404 is `unknown`. 5xx, 429, no network, and a 30s HTTP timeout are `incomplete`. `branta_id` / `branta_secret` with no payable destination is `unknown`. A bolt11 / Ark / silent-payment GET hit is `unknown` unless a destination of that type decrypts.
-- **`verify_url` is always returned.** Format: `{api_origin}/v2/verify/{lookup}` plus a URL fragment built from per-destination encryption keys on `match`.
-- **Encryption.** Bitcoin and stablecoin address rails use a caller-supplied secret (random UUID). bolt11, Ark, and silent payments use a key derived from a normalized hash of the value. `add_payment` encrypts a copy and leaves the caller `Payment` unchanged. Guardrail still receives `zk: true` and `zk_id` (`Destination.id`).
-- **Description** lives in encrypted `metadata.description` and is lifted onto `payment.description` after decrypt. It is not posted or read as Guardrail's plaintext `description` field.
-- **Public names.** Package entry exports `DestinationType` for rails — not `SECRET_KEY_URI_FAMILIES` or per-family helpers. `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`). `BrantaEnvironment`. Do not reintroduce `BrantaClientOptions`, `PrivacyMode`, `BrantaServerBaseUrl`, `set_zk`, or `get_payments_by_qr_code`.
-- **`verify` parses first.** Multi-value payloads go through `QRParser` whether they came from a scan or a paste.
-- **Never surface `unknown` or thrown errors to the user.** `tampered` is the exception: warn, do not show a verified card.
-- **Domain validation.** Logo URLs on platform, light, parent, and child must match the API origin. Every payment in a GET response is checked. An empty logo skips that field only.
-
 ## Conventions
 
 - Async throughout — `BrantaService` and `BrantaClient` methods are `async def`.
 - Python snake_case for public attributes and methods.
-- `BrantaService` takes one `BrantaApiOptions`. Inject `client`, `aes_encryption`, and `secret_generator` as keyword arguments in tests.
-- The public API is whatever `branta/__init__.py` exports.
+- `BrantaService` takes one `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`). Inject `client`, `aes_encryption`, and `secret_generator` as keyword arguments in tests.
+- The public API is whatever `branta/__init__.py` exports. The rail table (`EVM_TOKEN_RAILS`, `evm_token_type`) and `is_secret_key_address_type` stay internal.
