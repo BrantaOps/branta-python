@@ -42,7 +42,7 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 
 `environment` is `Production` on release and `Staging` everywhere else.
 
-On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. EVM stablecoins (USDT and USDC on Ethereum, Polygon, BNB Smart Chain, Base, and Arbitrum) need an ERC-681 `ethereum:<token-contract>@<chain-id>/transfer?address=<deposit>` URI with the same params. The chain id and token contract select the destination type, and `uint256` is not part of the match. `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` do not verify. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
+Pass the scanned or pasted text to `verify`. A Bitcoin or EVM stablecoin lookup needs `branta_id` and `branta_secret` in the URI. bolt11, Ark, and silent payments resolve from the value. A bare address is `unknown`. The full rules are on [Status rules](https://developer.branta.pro/setup/send/status-rules), and supported chains and contracts are on [Destination types](https://developer.branta.pro/destination-types).
 
 A 404 is `unknown`. 5xx, 429, no network, or a 30s HTTP timeout is `incomplete`.
 
@@ -76,7 +76,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, and the named stable rails (`UsdtPolygon` / `UsdcPolygon`, `UsdtEthereum` / `UsdcEthereum`, `UsdtBsc` / `UsdcBsc`, `UsdtBase` / `UsdcBase`, `UsdtArbitrum` / `UsdcArbitrum`, `UsdtTron`, `UsdtTon`, `UsdtSolana` / `UsdcSolana`). Tron, TON, and Solana rails encrypt on `add_payment` but have no verify URI.
+`add_payment` encrypts a copy. The `Payment` you pass in stays plaintext, so a failed post can be retried. It accepts the types on [Destination types](https://developer.branta.pro/destination-types), and [Encryption](https://developer.branta.pro/setup/receive/encryption) says which key each uses. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
 
 ## Per-call options
 
