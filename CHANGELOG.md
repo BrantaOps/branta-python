@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.4.0] - 2026-11-15
+## [4.4.0] - 2026-11-17
 
 ### Added
 - `usdt_base`, `usdc_base`, `usdt_arbitrum`, and `usdc_arbitrum`. `add_payment` encrypts them with the same UUID secret as the other stablecoin address rails.
@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - HTTP calls (GET, POST, health-check) use a 30s `aiohttp` timeout. A verify GET that times out returns `incomplete`.
+
+### Notes
+- Not published to PyPI on its own. These changes shipped in 4.4.0.
 
 ## [4.3.0] - 2026-11-12
 
