@@ -80,6 +80,6 @@ asyncio.run(main())
 
 ## Per-call options
 
-`verify`, `add_payment`, and `is_api_key_valid` take an optional `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`) that overrides the constructor for that call.
+`verify`, `add_payment`, and `is_api_key_valid` take an optional `BrantaApiOptions` (`environment`, `api_key`) that overrides the constructor for that call.
 
 [Changelog](CHANGELOG.md)
