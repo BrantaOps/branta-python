@@ -17,6 +17,8 @@ def test_destination_type_includes_multi_rail_stables():
     assert DestinationType.UsdtEthereum.value == "usdt_ethereum"
     assert DestinationType.UsdcSolana.value == "usdc_solana"
     assert DestinationType.UsdtTon.value == "usdt_ton"
+    assert DestinationType.UsdcBase.value == "usdc_base"
+    assert DestinationType.UsdtArbitrum.value == "usdt_arbitrum"
     assert "usdc_ton" not in {member.value for member in DestinationType}
 
 
@@ -29,6 +31,9 @@ def test_does_not_export_rail_family_internals():
         "TON_DESTINATION_TYPES",
         "SOLANA_DESTINATION_TYPES",
         "SECRET_KEY_URI_FAMILIES",
+        "EVM_TOKEN_RAILS",
+        "EvmTokenRail",
+        "evm_token_type",
         "is_secret_key_address_type",
     ):
         assert not hasattr(branta, name), name

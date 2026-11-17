@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import pytest
 
-from branta.enums import BrantaEnvironment, DestinationType, VerifyStatus
+from branta.enums import EVM_TOKEN_RAILS, BrantaEnvironment, DestinationType, VerifyStatus
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import to_normalized_hash
 from branta.models import Destination, Payment
@@ -381,13 +381,34 @@ USDT_POLYGON = "0x278297528c32eCa01295B0d2135984d3442ec963"
 USDC_POLYGON = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
 SIBLING_USDT = "0x2222222222222222222222222222222222222222"
 SWAPPED_POLYGON = "0x1111111111111111111111111111111111111111"
+SWAPPED_EVM = "0x" + "f" * 40
 
 
-def pol_uri(address: str, encrypted: str, secret: str = SECRET) -> str:
+def rail_for(destination_type: DestinationType):
+    return next(rail for rail in EVM_TOKEN_RAILS if rail.type == destination_type)
+
+
+def transfer_uri(
+    destination_type: DestinationType,
+    address: str,
+    encrypted: str,
+    secret: str = SECRET,
+    amount: str = "1000000",
+) -> str:
+    """ERC-681 transfer URI for one rail. Chain id and contract come from the rail table."""
+    rail = rail_for(destination_type)
     return (
-        f"pol:{address}?value=50&user=send&currency=USD"
-        f"&branta_id={encrypted}&branta_secret={secret}"
+        f"ethereum:{rail.contract}@{rail.chain_id}/transfer?address={address}&uint256={amount}"
+        f"&branta_id={quote(encrypted, safe='')}&branta_secret={quote(secret, safe='')}"
     )
+
+
+def polygon_usdt_uri(address: str, encrypted: str, secret: str = SECRET) -> str:
+    return transfer_uri(DestinationType.UsdtPolygon, address, encrypted, secret)
+
+
+def polygon_usdc_uri(address: str, encrypted: str, secret: str = SECRET) -> str:
+    return transfer_uri(DestinationType.UsdcPolygon, address, encrypted, secret)
 
 
 async def encrypted_secret_key_rail(
@@ -406,11 +427,11 @@ async def encrypted_secret_key_rail(
 
 
 class TestPolygonVerify:
-    async def test_pol_usdt_match_ignores_amount_query_and_sets_matched_destinations(self):
+    async def test_usdt_match_ignores_amount_and_sets_matched_destinations(self):
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, dest.value))
 
         assert result.status == VerifyStatus.Match
         assert result.payments is not None
@@ -420,26 +441,36 @@ class TestPolygonVerify:
         assert len(result.matched_destinations) == 1
         assert result.matched_destinations[0].type == DestinationType.UsdtPolygon
 
-    async def test_pol_usdt_case_insensitive_match(self):
+    async def test_amount_is_not_part_of_the_match(self):
+        for amount in ("1", "50000000", "999999999999"):
+            dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon)
+            client = FakeClient()
+            client.payments = [Payment(destinations=[dest])]
+            result = await service(client).verify(
+                transfer_uri(DestinationType.UsdtPolygon, USDT_POLYGON, dest.value, amount=amount)
+            )
+            assert result.status == VerifyStatus.Match
+
+    async def test_usdt_case_insensitive_match(self):
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON.lower(), dest.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON.lower(), dest.value))
         assert result.status == VerifyStatus.Match
 
-    async def test_pol_usdt_0x_prefix_case_insensitive_match(self):
+    async def test_usdt_0x_prefix_case_insensitive_match(self):
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
         mixed = "0X" + USDT_POLYGON[2:]
-        result = await service(client).verify(pol_uri(mixed, dest.value))
+        result = await service(client).verify(polygon_usdt_uri(mixed, dest.value))
         assert result.status == VerifyStatus.Match
 
-    async def test_pol_usdt_swapped_is_tampered(self):
+    async def test_usdt_swapped_is_tampered(self):
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(SWAPPED_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdt_uri(SWAPPED_POLYGON, dest.value))
         assert result.status == VerifyStatus.Tampered
         assert result.payments is None
 
@@ -449,18 +480,21 @@ class TestPolygonVerify:
         assert result.status == VerifyStatus.Unknown
         assert client.gets == []
 
-    async def test_pol_without_branta_params_is_unknown(self):
+    async def test_transfer_without_branta_params_is_unknown(self):
         client = FakeClient()
-        result = await service(client).verify(f"pol:{USDT_POLYGON}?value=50")
+        rail = rail_for(DestinationType.UsdtPolygon)
+        result = await service(client).verify(
+            f"ethereum:{rail.contract}@{rail.chain_id}/transfer?address={USDT_POLYGON}&uint256=50000000"
+        )
         assert result.status == VerifyStatus.Unknown
         assert client.gets == []
 
-    async def test_pol_ignores_sibling_bitcoin_rail(self):
+    async def test_polygon_ignores_sibling_bitcoin_rail(self):
         usdt = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         btc = await encrypted_address()
         client = FakeClient()
         client.payments = [Payment(destinations=[btc.destinations[0], usdt])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, usdt.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, usdt.value))
         assert result.status == VerifyStatus.Match
         dests = result.payments[0].destinations
         assert dests[0].type == DestinationType.BitcoinAddress
@@ -515,25 +549,25 @@ class TestPolygonVerify:
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, dest.value))
         assert result.status == VerifyStatus.Match
         result.matched_destinations[0].value = "mutated"
         assert result.payments[0].destinations[0].value == USDT_POLYGON
 
-    async def test_pol_swapped_still_tampered_with_sibling_bitcoin(self):
+    async def test_swapped_still_tampered_with_sibling_bitcoin(self):
         usdt = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         btc = await encrypted_address()
         client = FakeClient()
         client.payments = [Payment(destinations=[btc.destinations[0], usdt])]
-        result = await service(client).verify(pol_uri(SWAPPED_POLYGON, usdt.value))
+        result = await service(client).verify(polygon_usdt_uri(SWAPPED_POLYGON, usdt.value))
         assert result.status == VerifyStatus.Tampered
 
-    async def test_pol_match_if_any_dual_usdt_leaves_sibling_encrypted(self):
+    async def test_second_usdt_destination_with_another_address_stays_encrypted(self):
         match = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         sibling = await encrypted_secret_key_rail(SIBLING_USDT, DestinationType.UsdtPolygon, destination_id="zk-sib")
         client = FakeClient()
         client.payments = [Payment(destinations=[sibling, match])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, match.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, match.value))
         assert result.status == VerifyStatus.Match
         dests = result.payments[0].destinations
         assert dests[0].is_encrypted is True
@@ -541,68 +575,68 @@ class TestPolygonVerify:
         assert dests[1].is_encrypted is False
         assert dests[1].value == USDT_POLYGON
 
-    async def test_pol_swapped_tampered_when_no_polygon_family_rail_matches(self):
+    async def test_swapped_is_tampered_when_no_destination_of_the_type_matches(self):
         match = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         sibling = await encrypted_secret_key_rail(SIBLING_USDT, DestinationType.UsdtPolygon, destination_id="zk-sib")
         client = FakeClient()
         client.payments = [Payment(destinations=[sibling, match])]
-        result = await service(client).verify(pol_uri(SWAPPED_POLYGON, match.value))
+        result = await service(client).verify(polygon_usdt_uri(SWAPPED_POLYGON, match.value))
         assert result.status == VerifyStatus.Tampered
 
-    async def test_pol_usdc_match(self):
+    async def test_usdc_match(self):
         dest = await encrypted_secret_key_rail(USDC_POLYGON, DestinationType.UsdcPolygon, destination_id="zk-usdc")
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDC_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdc_uri(USDC_POLYGON, dest.value))
         assert result.status == VerifyStatus.Match
         assert result.matched_destinations[0].type == DestinationType.UsdcPolygon
 
-    async def test_pol_usdc_swapped_is_tampered(self):
+    async def test_usdc_swapped_is_tampered(self):
         dest = await encrypted_secret_key_rail(USDC_POLYGON, DestinationType.UsdcPolygon, destination_id="zk-usdc")
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(SWAPPED_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdc_uri(SWAPPED_POLYGON, dest.value))
         assert result.status == VerifyStatus.Tampered
 
-    async def test_pol_binds_usdt_leaves_usdc_encrypted(self):
+    @pytest.mark.parametrize(
+        "scanned, other",
+        [
+            (DestinationType.UsdtPolygon, DestinationType.UsdcPolygon),
+            (DestinationType.UsdcPolygon, DestinationType.UsdtPolygon),
+        ],
+        ids=["usdt_scan", "usdc_scan"],
+    )
+    async def test_scan_binds_the_scanned_token_and_leaves_the_other_encrypted(self, scanned, other):
+        deposits = {DestinationType.UsdtPolygon: USDT_POLYGON, DestinationType.UsdcPolygon: USDC_POLYGON}
         usdt = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         usdc = await encrypted_secret_key_rail(USDC_POLYGON, DestinationType.UsdcPolygon, destination_id="zk-usdc")
+        scanned_dest = usdt if scanned == DestinationType.UsdtPolygon else usdc
         client = FakeClient()
         client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, usdt.value))
+        result = await service(client).verify(transfer_uri(scanned, deposits[scanned], scanned_dest.value))
         assert result.status == VerifyStatus.Match
-        dests = result.payments[0].destinations
-        assert dests[0].is_encrypted is False and dests[0].type == DestinationType.UsdtPolygon
-        assert dests[1].is_encrypted is True and dests[1].type == DestinationType.UsdcPolygon
+        by_type = {d.type: d for d in result.payments[0].destinations}
+        assert by_type[scanned].is_encrypted is False
+        assert by_type[other].is_encrypted is True
 
-    async def test_pol_binds_usdc_leaves_usdt_encrypted(self):
-        usdt = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_POLYGON, DestinationType.UsdcPolygon, destination_id="zk-usdc")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(pol_uri(USDC_POLYGON, usdc.value))
-        assert result.status == VerifyStatus.Match
-        dests = result.payments[0].destinations
-        assert dests[0].is_encrypted is True and dests[0].type == DestinationType.UsdtPolygon
-        assert dests[1].is_encrypted is False and dests[1].type == DestinationType.UsdcPolygon
-
-    async def test_pol_wrong_secret_is_unknown(self):
+    async def test_wrong_secret_is_unknown(self):
         dest = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value, secret="wrong-secret"))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, dest.value, secret="wrong-secret"))
         assert result.status == VerifyStatus.Unknown
 
-    async def test_same_address_usdt_and_usdc_both_match(self):
+    async def test_same_address_usdt_and_usdc_binds_only_the_scanned_token(self):
         usdt = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-usdt")
         usdc = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdcPolygon, destination_id="zk-usdc")
         client = FakeClient()
         client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, usdt.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, usdt.value))
         assert result.status == VerifyStatus.Match
-        assert len(result.matched_destinations) == 2
+        assert [d.type for d in result.matched_destinations] == [DestinationType.UsdtPolygon]
+        assert result.payments[0].destinations[1].is_encrypted is True
 
-    async def test_pol_description_is_lifted_from_decrypted_metadata(self):
+    async def test_description_is_lifted_from_decrypted_metadata(self):
         dek = "dek-poly"
         metadata = json.dumps({"description": "USDT invoice"})
         encrypted_metadata = await AesEncryption.encrypt(metadata, dek)
@@ -611,7 +645,7 @@ class TestPolygonVerify:
         dest.encrypted_dek = encrypted_dek
         client = FakeClient()
         client.payments = [Payment(metadata=encrypted_metadata, destinations=[dest])]
-        result = await service(client).verify(pol_uri(USDT_POLYGON, dest.value))
+        result = await service(client).verify(polygon_usdt_uri(USDT_POLYGON, dest.value))
 
         assert result.status == VerifyStatus.Match
         assert result.payments is not None
@@ -662,91 +696,130 @@ class TestPolygonVerify:
         assert result.secret == "polygon-secret"
 
 
-USDT_ETHEREUM = "0xBF5550253939187432Ef4dccE8089765d3DCb47f"
-USDC_ETHEREUM = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-USDT_BSC = "0x55d398326f99059fF775485246999027B3197955"
-USDC_BSC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
 USDT_TRON = "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"
-SWAPPED_TRON = "TXyZ1111111111111111111111111111111"
 USDT_TON = "EQDtFpEwcFAEcRe5mLVh2N6C0y-_tur3BYOM93pEZPw390by"
-SWAPPED_TON = "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"
 USDT_SOLANA = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 USDC_SOLANA = "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf"
-SWAPPED_SOLANA = "11111111111111111111111111111111"
-SWAPPED_EVM = "0x1111111111111111111111111111111111111111"
+
+# One fresh deposit per rail so a payment holding two rails never shares an address.
+RAIL_DEPOSITS = {
+    rail.type: "0x" + format(index + 1, "x").rjust(40, "1")
+    for index, rail in enumerate(EVM_TOKEN_RAILS)
+}
 
 
-def chain_uri(scheme: str, address: str, encrypted: str, secret: str = SECRET) -> str:
-    return f"{scheme}:{address}?value=50&branta_id={quote(encrypted, safe='')}&branta_secret={quote(secret, safe='')}"
-
-
-class TestStablecoinMultiRailVerify:
-    async def test_eth_usdt_match(self):
-        dest = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-eth")
+class TestEvmRailVerify:
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    async def test_match_returns_the_scanned_type(self, rail):
+        deposit = RAIL_DEPOSITS[rail.type]
+        dest = await encrypted_secret_key_rail(deposit, rail.type, destination_id="zk-rail")
+        ciphertext = dest.value
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("eth", USDT_ETHEREUM, dest.value))
+        result = await service(client).verify(transfer_uri(rail.type, deposit, ciphertext))
 
         assert result.status == VerifyStatus.Match
         assert result.matched_destinations is not None
-        assert result.matched_destinations[0].type == DestinationType.UsdtEthereum
-        assert result.matched_destinations[0].value == USDT_ETHEREUM
+        assert [d.type for d in result.matched_destinations] == [rail.type]
+        assert result.matched_destinations[0].value == deposit
+        assert client.gets == [ciphertext]
 
-    async def test_eth_usdt_swapped_is_tampered(self):
-        dest = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-eth")
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    async def test_lowercase_deposit_still_matches(self, rail):
+        deposit = RAIL_DEPOSITS[rail.type]
+        dest = await encrypted_secret_key_rail(deposit.upper().replace("0X", "0x"), rail.type)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("eth", SWAPPED_EVM, dest.value))
-        assert result.status == VerifyStatus.Tampered
-
-    async def test_eth_usdt_case_insensitive_match(self):
-        dest = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-eth")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("eth", USDT_ETHEREUM.lower(), dest.value))
+        result = await service(client).verify(transfer_uri(rail.type, deposit.lower(), dest.value))
         assert result.status == VerifyStatus.Match
 
-    async def test_eth_match_if_any_binds_usdt_leaves_usdc_encrypted(self):
-        usdt = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_ETHEREUM, DestinationType.UsdcEthereum, destination_id="zk-usdc")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(chain_uri("eth", USDT_ETHEREUM, usdt.value))
-
-        assert result.status == VerifyStatus.Match
-        dests = result.payments[0].destinations
-        assert dests[0].is_encrypted is False
-        assert dests[1].is_encrypted is True
-        assert [d.type for d in result.matched_destinations] == [DestinationType.UsdtEthereum]
-
-    async def test_eth_swapped_tampered_when_no_family_rail_matches(self):
-        usdt = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_ETHEREUM, DestinationType.UsdcEthereum, destination_id="zk-usdc")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(chain_uri("eth", SWAPPED_EVM, usdt.value))
-        assert result.status == VerifyStatus.Tampered
-
-    async def test_eth_usdc_swapped_is_tampered(self):
-        dest = await encrypted_secret_key_rail(USDC_ETHEREUM, DestinationType.UsdcEthereum, destination_id="zk-usdc")
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    async def test_swapped_deposit_is_tampered(self, rail):
+        deposit = RAIL_DEPOSITS[rail.type]
+        dest = await encrypted_secret_key_rail(deposit, rail.type)
         client = FakeClient()
         client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("eth", SWAPPED_EVM, dest.value))
+        result = await service(client).verify(transfer_uri(rail.type, SWAPPED_EVM, dest.value))
         assert result.status == VerifyStatus.Tampered
+        assert result.payments is None
+        assert "#k-" not in result.verify_url
 
-    async def test_eth_uri_with_polygon_only_payment_is_unknown(self):
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    async def test_wrong_chain_id_is_unknown_without_get(self, rail):
+        deposit = RAIL_DEPOSITS[rail.type]
+        other_chain = 137 if rail.chain_id != 137 else 1
+        client = FakeClient()
+        result = await service(client).verify(
+            f"ethereum:{rail.contract}@{other_chain}/transfer?address={deposit}&branta_id=abc&branta_secret={SECRET}"
+        )
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
+
+    @pytest.mark.parametrize("rail", EVM_TOKEN_RAILS, ids=lambda rail: rail.type.value)
+    async def test_transfer_without_branta_params_is_unknown_without_get(self, rail):
+        deposit = RAIL_DEPOSITS[rail.type]
+        client = FakeClient()
+        result = await service(client).verify(
+            f"ethereum:{rail.contract}@{rail.chain_id}/transfer?address={deposit}&uint256=1"
+        )
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
+
+    async def test_usdc_scan_against_a_usdt_only_payment_is_unknown(self):
+        usdt_deposit = RAIL_DEPOSITS[DestinationType.UsdtEthereum]
+        usdt = await encrypted_secret_key_rail(usdt_deposit, DestinationType.UsdtEthereum, destination_id="zk-usdt")
+        client = FakeClient()
+        client.payments = [Payment(destinations=[usdt])]
+        result = await service(client).verify(
+            transfer_uri(DestinationType.UsdcEthereum, usdt_deposit, usdt.value)
+        )
+        assert result.status == VerifyStatus.Unknown
+        assert result.payments is None
+        assert client.payments[0].destinations[0].is_encrypted is True
+
+    async def test_dual_token_payment_binds_only_the_scanned_token(self):
+        usdt_deposit = RAIL_DEPOSITS[DestinationType.UsdtEthereum]
+        usdc_deposit = RAIL_DEPOSITS[DestinationType.UsdcEthereum]
+
+        async def fresh() -> tuple[FakeClient, str]:
+            usdt = await encrypted_secret_key_rail(usdt_deposit, DestinationType.UsdtEthereum, destination_id="zk-usdt")
+            usdc = await encrypted_secret_key_rail(usdc_deposit, DestinationType.UsdcEthereum, destination_id="zk-usdc")
+            client = FakeClient()
+            client.payments = [Payment(destinations=[usdt, usdc])]
+            return client, usdt.value
+
+        # Both scans send the USDT ciphertext as branta_id. Only the token named in the URI binds.
+        client, usdt_cipher = await fresh()
+        usdt_scan = await service(client).verify(transfer_uri(DestinationType.UsdtEthereum, usdt_deposit, usdt_cipher))
+        assert usdt_scan.status == VerifyStatus.Match
+        assert [d.type for d in usdt_scan.matched_destinations] == [DestinationType.UsdtEthereum]
+        assert usdt_scan.payments[0].destinations[1].is_encrypted is True
+
+        client, usdt_cipher = await fresh()
+        usdc_scan = await service(client).verify(transfer_uri(DestinationType.UsdcEthereum, usdc_deposit, usdt_cipher))
+        assert usdc_scan.status == VerifyStatus.Match
+        assert [d.type for d in usdc_scan.matched_destinations] == [DestinationType.UsdcEthereum]
+        assert usdc_scan.payments[0].destinations[0].is_encrypted is True
+
+        client, usdt_cipher = await fresh()
+        swapped = await service(client).verify(transfer_uri(DestinationType.UsdtEthereum, SWAPPED_EVM, usdt_cipher))
+        assert swapped.status == VerifyStatus.Tampered
+
+    async def test_ethereum_scan_does_not_match_a_polygon_only_payment(self):
         poly = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-poly")
         client = FakeClient()
         client.payments = [Payment(destinations=[poly])]
-        result = await service(client).verify(chain_uri("eth", USDT_POLYGON, poly.value))
+        result = await service(client).verify(transfer_uri(DestinationType.UsdtEthereum, USDT_POLYGON, poly.value))
         assert result.status == VerifyStatus.Unknown
+        assert client.payments[0].destinations[0].is_encrypted is True
 
-    async def test_eth_scheme_ignores_polygon_family_rail(self):
+    async def test_ethereum_scan_leaves_a_polygon_rail_in_the_same_payment_encrypted(self):
         poly = await encrypted_secret_key_rail(USDT_POLYGON, DestinationType.UsdtPolygon, destination_id="zk-poly")
-        eth = await encrypted_secret_key_rail(USDT_ETHEREUM, DestinationType.UsdtEthereum, destination_id="zk-eth")
+        eth_deposit = RAIL_DEPOSITS[DestinationType.UsdtEthereum]
+        eth = await encrypted_secret_key_rail(eth_deposit, DestinationType.UsdtEthereum, destination_id="zk-eth")
         client = FakeClient()
         client.payments = [Payment(destinations=[poly, eth])]
-        result = await service(client).verify(chain_uri("eth", USDT_ETHEREUM, eth.value))
+        result = await service(client).verify(transfer_uri(DestinationType.UsdtEthereum, eth_deposit, eth.value))
 
         assert result.status == VerifyStatus.Match
         dests = result.payments[0].destinations
@@ -754,117 +827,91 @@ class TestStablecoinMultiRailVerify:
         assert dests[1].is_encrypted is False
         assert len(result.matched_destinations) == 1
 
-    async def test_bsc_usdt_match_and_swapped_tampered(self):
-        match_dest = await encrypted_secret_key_rail(USDT_BSC, DestinationType.UsdtBsc, destination_id="zk-bsc")
+    @pytest.mark.parametrize(
+        "function",
+        ["approve", "transferFrom", "transfer;x=1"],
+    )
+    async def test_other_functions_are_unknown_without_get(self, function):
+        rail = rail_for(DestinationType.UsdtBase)
         client = FakeClient()
-        client.payments = [Payment(destinations=[match_dest])]
-        match = await service(client).verify(chain_uri("bsc", USDT_BSC, match_dest.value))
-        assert match.status == VerifyStatus.Match
-        assert match.matched_destinations[0].type == DestinationType.UsdtBsc
+        result = await service(client).verify(
+            f"ethereum:{rail.contract}@{rail.chain_id}/{function}?address={SWAPPED_POLYGON}"
+            f"&uint256=1&branta_id=abc&branta_secret={SECRET}"
+        )
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
 
-        tamper_dest = await encrypted_secret_key_rail(USDT_BSC, DestinationType.UsdtBsc, destination_id="zk-bsc")
-        client.payments = [Payment(destinations=[tamper_dest])]
-        tampered = await service(client).verify(chain_uri("bsc", SWAPPED_EVM, tamper_dest.value))
-        assert tampered.status == VerifyStatus.Tampered
-
-    async def test_bsc_match_if_any_binds_usdt_leaves_usdc_encrypted(self):
-        usdt = await encrypted_secret_key_rail(USDT_BSC, DestinationType.UsdtBsc, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_BSC, DestinationType.UsdcBsc, destination_id="zk-usdc")
+    async def test_authority_form_is_unknown_without_get(self):
+        rail = rail_for(DestinationType.UsdtBase)
         client = FakeClient()
-        client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(chain_uri("bsc", USDT_BSC, usdt.value))
-        assert result.status == VerifyStatus.Match
-        assert result.payments[0].destinations[0].is_encrypted is False
-        assert result.payments[0].destinations[1].is_encrypted is True
-
-    async def test_tron_usdt_match(self):
-        dest = await encrypted_secret_key_rail(USDT_TRON, DestinationType.UsdtTron, destination_id="zk-tron")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("tron", USDT_TRON, dest.value))
-
-        assert result.status == VerifyStatus.Match
-        assert result.matched_destinations is not None
-        assert result.matched_destinations[0].type == DestinationType.UsdtTron
-        assert result.matched_destinations[0].value == USDT_TRON
-
-    async def test_tron_swapped_is_tampered(self):
-        dest = await encrypted_secret_key_rail(USDT_TRON, DestinationType.UsdtTron, destination_id="zk-tron")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("tron", SWAPPED_TRON, dest.value))
-        assert result.status == VerifyStatus.Tampered
-
-    async def test_ton_usdt_match_and_swapped_tampered(self):
-        match_dest = await encrypted_secret_key_rail(USDT_TON, DestinationType.UsdtTon, destination_id="zk-ton")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[match_dest])]
-        match = await service(client).verify(chain_uri("ton", USDT_TON, match_dest.value))
-        assert match.status == VerifyStatus.Match
-        assert match.matched_destinations[0].type == DestinationType.UsdtTon
-
-        tamper_dest = await encrypted_secret_key_rail(USDT_TON, DestinationType.UsdtTon, destination_id="zk-ton")
-        client.payments = [Payment(destinations=[tamper_dest])]
-        tampered = await service(client).verify(chain_uri("ton", SWAPPED_TON, tamper_dest.value))
-        assert tampered.status == VerifyStatus.Tampered
-
-    async def test_sol_usdt_and_usdc_match(self):
-        usdt = await encrypted_secret_key_rail(USDT_SOLANA, DestinationType.UsdtSolana, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_SOLANA, DestinationType.UsdcSolana, destination_id="zk-usdc")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[usdt])]
-        usdt_match = await service(client).verify(chain_uri("sol", USDT_SOLANA, usdt.value))
-        assert usdt_match.status == VerifyStatus.Match
-        assert usdt_match.matched_destinations[0].type == DestinationType.UsdtSolana
-
-        client.payments = [Payment(destinations=[usdc])]
-        usdc_match = await service(client).verify(chain_uri("sol", USDC_SOLANA, usdc.value))
-        assert usdc_match.status == VerifyStatus.Match
-        assert usdc_match.matched_destinations[0].type == DestinationType.UsdcSolana
-
-    async def test_sol_swapped_is_tampered(self):
-        dest = await encrypted_secret_key_rail(USDC_SOLANA, DestinationType.UsdcSolana, destination_id="zk-sol")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[dest])]
-        result = await service(client).verify(chain_uri("sol", SWAPPED_SOLANA, dest.value))
-        assert result.status == VerifyStatus.Tampered
-
-    async def test_sol_match_if_any_binds_usdt_leaves_usdc_encrypted(self):
-        usdt = await encrypted_secret_key_rail(USDT_SOLANA, DestinationType.UsdtSolana, destination_id="zk-usdt")
-        usdc = await encrypted_secret_key_rail(USDC_SOLANA, DestinationType.UsdcSolana, destination_id="zk-usdc")
-        client = FakeClient()
-        client.payments = [Payment(destinations=[usdt, usdc])]
-        result = await service(client).verify(chain_uri("sol", USDT_SOLANA, usdt.value))
-        assert result.status == VerifyStatus.Match
-        assert result.payments[0].destinations[0].is_encrypted is False
-        assert result.payments[0].destinations[1].is_encrypted is True
+        result = await service(client).verify(
+            f"ethereum://{rail.contract}@{rail.chain_id}/transfer?address={SWAPPED_POLYGON}"
+            f"&branta_id=abc&branta_secret={SECRET}"
+        )
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
 
     @pytest.mark.parametrize(
-        "address",
-        [USDT_ETHEREUM, USDT_TRON, USDT_TON, USDC_SOLANA],
+        "text",
+        [
+            "ethereum://[bad/transfer",
+            "bitcoin://[bad",
+            "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@" + "9" * 5000 + "/transfer?address=" + SWAPPED_EVM,
+        ],
     )
+    async def test_unparseable_input_is_unknown_and_does_not_throw(self, text):
+        client = FakeClient()
+        result = await service(client).verify(text)
+        assert result.status == VerifyStatus.Unknown
+        assert client.gets == []
+
+    @pytest.mark.parametrize("address", [USDT_POLYGON, USDT_TRON, USDT_TON, USDC_SOLANA])
     async def test_bare_address_is_unknown(self, address):
         client = FakeClient()
         result = await service(client).verify(address)
         assert result.status == VerifyStatus.Unknown
         assert client.gets == []
 
-    @pytest.mark.parametrize("scheme,address", [("eth", USDT_ETHEREUM), ("tron", USDT_TRON), ("ton", USDT_TON)])
-    async def test_uri_without_branta_params_is_unknown(self, scheme, address):
+
+class TestRemovedChainSchemes:
+    @pytest.mark.parametrize(
+        "scheme,address",
+        [
+            ("pol", USDT_POLYGON),
+            ("eth", USDT_POLYGON),
+            ("bsc", USDT_POLYGON),
+            ("tron", USDT_TRON),
+            ("ton", USDT_TON),
+            ("sol", USDT_SOLANA),
+            ("sol", USDC_SOLANA),
+        ],
+    )
+    async def test_scheme_is_unknown_without_get_even_with_valid_params(self, scheme, address):
+        dest = await encrypted_secret_key_rail(address, DestinationType.UsdtPolygon, destination_id="zk-x")
         client = FakeClient()
-        result = await service(client).verify(f"{scheme}:{address}")
+        client.payments = [Payment(destinations=[dest])]
+        uri = (
+            f"{scheme}:{address}?value=50&branta_id={quote(dest.value, safe='')}"
+            f"&branta_secret={quote(SECRET, safe='')}"
+        )
+        result = await service(client).verify(uri)
         assert result.status == VerifyStatus.Unknown
         assert client.gets == []
 
+
+POST_ONLY_RAILS = [
+    (USDT_TRON, DestinationType.UsdtTron),
+    (USDT_TON, DestinationType.UsdtTon),
+    (USDT_SOLANA, DestinationType.UsdtSolana),
+    (USDC_SOLANA, DestinationType.UsdcSolana),
+]
+
+
+class TestStablecoinAddPayment:
     @pytest.mark.parametrize(
         "address,destination_type",
-        [
-            (USDT_ETHEREUM, DestinationType.UsdtEthereum),
-            (USDT_BSC, DestinationType.UsdtBsc),
-            (USDT_TRON, DestinationType.UsdtTron),
-            (USDT_TON, DestinationType.UsdtTon),
-            (USDC_SOLANA, DestinationType.UsdcSolana),
-        ],
+        [(RAIL_DEPOSITS[rail.type], rail.type) for rail in EVM_TOKEN_RAILS] + POST_ONLY_RAILS,
+        ids=lambda value: value.value if isinstance(value, DestinationType) else None,
     )
     async def test_add_payment_encrypts_secret_key_rail(self, address, destination_type):
         client = FakeClient()

@@ -99,6 +99,95 @@ class TestProduction:
         assert "#k-" not in result.verify_url
 
 
+# Staging examples from the docs: one ERC-681 transfer per EVM rail, plus a swapped-address copy of five.
+STAGING_EVM_MATCH = {
+    "Polygon USDT": (
+        "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@137/transfer?address=0x278297528c32eCa01295B0d21"
+        "35984d3442ec963&uint256=50000000&branta_id=4WYE9J4TjNitdX7AL%2Fw7frpYdKGwSKHCS5zpFXl%2FlQGwpsQi4%2Fg"
+        "v5MxgujPFzYMbIKqg2rtyYGpzJCllEA6Qudbi7lLkiA%3D%3D&branta_secret=c0fab1ee-1526-4efa-b991-9ee138a44cd2"
+    ),
+    "Polygon USDC": (
+        "ethereum:0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359@137/transfer?address=0xAb5801a7D398351b8bE11C439"
+        "e05C5B3259aeC9B&uint256=50000000&branta_id=8rnGGWZcg%2Fg3He1OK6yZ6OLOEyusldwIDaoPImRzWjoUGguyXKotuF8"
+        "ZlGbCZN9TRqx3PdXjvHDdwffdVvIZxmZ00xJvxA%3D%3D&branta_secret=0515039f-2c31-4467-b62a-4e919079a44e"
+    ),
+    "Ethereum USDT": (
+        "ethereum:0xdAC17F958D2ee523a2206206994597C13D831ec7@1/transfer?address=0xBF5550253939187432Ef4dccE80"
+        "89765d3DCb47f&uint256=1000000&branta_id=hEdYLfbK2EqIn7Sj3Z7o6MVOcwOtPmA9eup2Xt3b58MzqVmu5RnLKh1WcEn5"
+        "086MgRznzA7vtdw04YpQo9%2BJPzDATs7MGQ%3D%3D&branta_secret=a8065c37-6728-487e-b94a-58990fa494f4"
+    ),
+    "Ethereum USDC": (
+        "ethereum:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48@1/transfer?address=0x111111111111111111111111111"
+        "1111111111112&uint256=1000000&branta_id=kZfmySkTUMNBaltxtHmPwulVBnXTWhPTV%2ByvgbwciaikaJNobP%2BQSO5l"
+        "nxnhWPp1QiULnzas%2Brh%2FYCZSMotBN2lmbPDI5A%3D%3D&branta_secret=3e8ba7a8-f7b2-4ec5-bd78-aced1e2ec747"
+    ),
+    "BNB USDT": (
+        "ethereum:0x55d398326f99059fF775485246999027B3197955@56/transfer?address=0x11111111111111111111111111"
+        "11111111111113&uint256=1000000000000000000&branta_id=mkuZIr%2BgINAnuduVhc5cj5N3%2FlmqYKntp28Vl4MyEkm"
+        "I%2F%2BgXFuJ3qCT4TJq4js2UkYVWQMCSa7%2Bc15%2BPqv13ncsqx9daEA%3D%3D&branta_secret=15a81c25-62dc-4dc9-8"
+        "c45-4aa7965235a1"
+    ),
+    "BNB USDC": (
+        "ethereum:0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d@56/transfer?address=0x11111111111111111111111111"
+        "11111111111114&uint256=1000000000000000000&branta_id=lnOeOCF%2BtcA3WPbDLiKThwXQjGwKXRnKleDRo7vLEpRyv"
+        "feb%2BNvH9FIFXv2lppn39%2Bi%2For1aMtA%2F814DjFAg0sH2hARAzw%3D%3D&branta_secret=0edd3453-4249-4d54-aa0"
+        "6-5329b6d506c7"
+    ),
+    "Base USDT": (
+        "ethereum:0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2@8453/transfer?address=0x111111111111111111111111"
+        "1111111111111115&uint256=1000000&branta_id=vBvqB0uhBi6objCfmXR%2B4cvofi%2FSwC08%2BCANwZrDPFVKfTg24qB"
+        "Wk6xuBoPifgofkUkK8q3n3a3Djh9nb%2Bh%2B8%2FaC%2Bh%2FjVw%3D%3D&branta_secret=5f204ca2-8c06-47ee-b339-8d"
+        "f769ec4988"
+    ),
+    "Base USDC": (
+        "ethereum:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913@8453/transfer?address=0x111111111111111111111111"
+        "1111111111111116&uint256=1000000&branta_id=4y98sndEJvATBQawsOIcank8PyVpdUhfk2X4Z7FTok6P%2BdsOZE7xY%2"
+        "F%2FiIbmYFMnEwbLN%2BdcKcX0ipyFg3jKEQcb3zB%2F8XA%3D%3D&branta_secret=82af0fe5-14ce-400d-8a66-22c8bc9f"
+        "2af8"
+    ),
+    "Arbitrum USDT": (
+        "ethereum:0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9@42161/transfer?address=0x11111111111111111111111"
+        "11111111111111117&uint256=1000000&branta_id=mfFg02EOgLqYr8LHE%2FFUrNtHKsHbKG2qIx8flxggEoYZiYELfgMu67"
+        "F2BdBsPi9HLQ6PtJPm%2FATA4GxOps2Fgby9jpe1Hg%3D%3D&branta_secret=53d713ad-f65e-4af1-b83c-b9f46500c0d5"
+    ),
+    "Arbitrum USDC": (
+        "ethereum:0xaf88d065e77c8cC2239327C5EDb3A432268e5831@42161/transfer?address=0x11111111111111111111111"
+        "11111111111111118&uint256=1000000&branta_id=SFlYfTXtcslM7BM07KJYow6YzeoijFMpQAsesIRDbphUzXsaHggmMxim"
+        "xaWhv178SssuaxhbDrqHk5KJAqKXqfwKegFpbQ%3D%3D&branta_secret=e7d829e9-18da-4831-aba7-678645e22c95"
+    ),
+}
+
+STAGING_EVM_TAMPERED = {
+    "Tampered Polygon USDT": (
+        "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@137/transfer?address=0x2222222222222222222222222"
+        "222222222222222&uint256=50000000&branta_id=4WYE9J4TjNitdX7AL%2Fw7frpYdKGwSKHCS5zpFXl%2FlQGwpsQi4%2Fg"
+        "v5MxgujPFzYMbIKqg2rtyYGpzJCllEA6Qudbi7lLkiA%3D%3D&branta_secret=c0fab1ee-1526-4efa-b991-9ee138a44cd2"
+    ),
+    "Tampered Ethereum USDT": (
+        "ethereum:0xdAC17F958D2ee523a2206206994597C13D831ec7@1/transfer?address=0x222222222222222222222222222"
+        "2222222222222&uint256=1000000&branta_id=hEdYLfbK2EqIn7Sj3Z7o6MVOcwOtPmA9eup2Xt3b58MzqVmu5RnLKh1WcEn5"
+        "086MgRznzA7vtdw04YpQo9%2BJPzDATs7MGQ%3D%3D&branta_secret=a8065c37-6728-487e-b94a-58990fa494f4"
+    ),
+    "Tampered BNB USDT": (
+        "ethereum:0x55d398326f99059fF775485246999027B3197955@56/transfer?address=0x22222222222222222222222222"
+        "22222222222222&uint256=1000000000000000000&branta_id=mkuZIr%2BgINAnuduVhc5cj5N3%2FlmqYKntp28Vl4MyEkm"
+        "I%2F%2BgXFuJ3qCT4TJq4js2UkYVWQMCSa7%2Bc15%2BPqv13ncsqx9daEA%3D%3D&branta_secret=15a81c25-62dc-4dc9-8"
+        "c45-4aa7965235a1"
+    ),
+    "Tampered Base USDT": (
+        "ethereum:0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2@8453/transfer?address=0x222222222222222222222222"
+        "2222222222222222&uint256=1000000&branta_id=vBvqB0uhBi6objCfmXR%2B4cvofi%2FSwC08%2BCANwZrDPFVKfTg24qB"
+        "Wk6xuBoPifgofkUkK8q3n3a3Djh9nb%2Bh%2B8%2FaC%2Bh%2FjVw%3D%3D&branta_secret=5f204ca2-8c06-47ee-b339-8d"
+        "f769ec4988"
+    ),
+    "Tampered Arbitrum USDT": (
+        "ethereum:0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9@42161/transfer?address=0x22222222222222222222222"
+        "22222222222222222&uint256=1000000&branta_id=mfFg02EOgLqYr8LHE%2FFUrNtHKsHbKG2qIx8flxggEoYZiYELfgMu67"
+        "F2BdBsPi9HLQ6PtJPm%2FATA4GxOps2Fgby9jpe1Hg%3D%3D&branta_secret=53d713ad-f65e-4af1-b83c-b9f46500c0d5"
+    ),
+}
+
+
 @pytest.mark.timeout(TIMEOUT)
 class TestStaging:
     ON_CHAIN = "bitcoin:bc1qgw3dzmhnyvcswc9r0v0z0ajtp8ulm4nuyeahwr"
@@ -134,16 +223,6 @@ class TestStaging:
         "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
         "?branta_id=6SpYCe23r79x0t8rNvmjWqhrg8hen4xz%2FYSXhNJ9HLSYrTRPnm%2BSwAuf6NOKobnwE%2B3MQBNkyTnCtIWp"
         "KKX2E9ZUWVedig%3D%3D&branta_secret=05eb145d-b5cb-452a-9256-0bdfd9a15ffa"
-    )
-    USDT_POLYGON = (
-        "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&user=send&currency=USD"
-        "&branta_id=4WYE9J4TjNitdX7AL%2Fw7frpYdKGwSKHCS5zpFXl%2FlQGwpsQi4%2Fgv5MxgujPFzYMbIKqg2rtyYGpzJC"
-        "llEA6Qudbi7lLkiA%3D%3D&branta_secret=c0fab1ee-1526-4efa-b991-9ee138a44cd2"
-    )
-    USDC_POLYGON = (
-        "pol:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B?value=50&user=send&currency=USD"
-        "&branta_id=8rnGGWZcg%2Fg3He1OK6yZ6OLOEyusldwIDaoPImRzWjoUGguyXKotuF8ZlGbCZN9TRqx3PdXjvHDdwffdVvIZxm"
-        "Z00xJvxA%3D%3D&branta_secret=0515039f-2c31-4467-b62a-4e919079a44e"
     )
     BARE_OX = "0x278297528c32eCa01295B0d2135984d3442ec963"
 
@@ -197,15 +276,19 @@ class TestStaging:
         assert result.payments is None
         assert "#k-" not in result.verify_url
 
-    async def test_usdt_polygon_matches(self):
-        result = await self.service.verify(self.USDT_POLYGON)
+    @pytest.mark.parametrize("name", list(STAGING_EVM_MATCH))
+    async def test_evm_stablecoin_matches(self, name):
+        result = await self.service.verify(STAGING_EVM_MATCH[name])
         assert result.status == VerifyStatus.Match
         assert result.payments
+        assert result.matched_destinations
 
-    async def test_usdc_polygon_matches(self):
-        result = await self.service.verify(self.USDC_POLYGON)
-        assert result.status == VerifyStatus.Match
-        assert result.payments
+    @pytest.mark.parametrize("name", list(STAGING_EVM_TAMPERED))
+    async def test_evm_stablecoin_swapped_address_is_tampered(self, name):
+        result = await self.service.verify(STAGING_EVM_TAMPERED[name])
+        assert result.status == VerifyStatus.Tampered
+        assert result.payments is None
+        assert "#k-" not in result.verify_url
 
     async def test_bare_ox_is_unknown(self):
         result = await self.service.verify(self.BARE_OX)

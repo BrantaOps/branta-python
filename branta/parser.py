@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
-from branta.enums import SECRET_KEY_URI_FAMILIES, DestinationType
+from branta.enums import DestinationType, evm_token_type
 from branta.extensions import get_derived_key_type, is_ark, is_bolt11, is_silent_payment
 
 _COLON_TO_QUESTION = re.compile(r"(?<=:)[^?]*")
 _MALFORMED_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_ERC681_PATH = re.compile(r"(0x[0-9a-fA-F]{40})@([0-9]+)/transfer")
+_EVM_ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}", re.IGNORECASE)
 
 
 @dataclass
@@ -35,7 +37,12 @@ def _normalize_qr_text(qr_text: str) -> str:
 
 
 def _try_parse_url(text: str):
-    parsed = urlparse(text)
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        # An unbalanced "[" in the authority, for example. Treat the text as an untyped
+        # destination, the same as any other input that is not a URI.
+        return None
     if not parsed.scheme or not re.match(r"^[A-Za-z][A-Za-z0-9+.\-]*$", parsed.scheme):
         return None
     return parsed
@@ -108,21 +115,53 @@ def _parse_query_string(query: str) -> Dict[str, str]:
 
 
 def _query_from_text(text: str) -> str:
+    # A "?" after the "#" belongs to the fragment, not the query.
+    hash_idx = text.find("#")
+    if hash_idx != -1:
+        text = text[:hash_idx]
     q = text.find("?")
-    if q == -1:
-        return ""
-    hash_idx = text.find("#", q)
-    return text[q : len(text) if hash_idx == -1 else hash_idx]
+    return "" if q == -1 else text[q:]
+
+
+def _erc681_path(text: str) -> str:
+    """Path of an ethereum: URI, without scheme, query, or fragment. One leading slash is dropped."""
+    rest = text[text.index(":") + 1 :]
+    for delimiter in ("?", "#"):
+        cut = rest.find(delimiter)
+        if cut != -1:
+            rest = rest[:cut]
+    return rest[1:] if rest.startswith("/") else rest
+
+
+def _parse_erc681(text: str) -> Optional[Tuple[DestinationType, str]]:
+    """ERC-681 token transfer. Chain id and contract select one destination type.
+    The deposit address is the `address` query param."""
+    match = _ERC681_PATH.fullmatch(_erc681_path(text))
+    if match is None:
+        return None
+    chain_digits = match.group(2).lstrip("0") or "0"
+    if len(chain_digits) > 15:
+        # No supported chain id has more than 15 digits. This also keeps int() under
+        # Python's limit on digits in a string-to-int conversion.
+        return None
+    destination_type = evm_token_type(int(chain_digits), match.group(1))
+    if destination_type is None:
+        return None
+    address = _parse_query_string(_query_from_text(text)).get("address")
+    if address is None or _EVM_ADDRESS.fullmatch(address) is None:
+        return None
+    return destination_type, address
 
 
 class QRParser:
     def __init__(self, qr_text: str) -> None:
         self.destinations: list[QrDestination] = []
-        # branta_id / branta_secret from bitcoin: or a chain scheme like pol: (legacy "on_chain" names).
+        # branta_id / branta_secret from a bitcoin: or ERC-681 ethereum: URI (legacy "on_chain" names).
         self.on_chain_encryption_text: Optional[str] = None
         self.on_chain_encryption_secret: Optional[str] = None
         self.has_unverifiable_instruction = False
-        # Destination types verify may bind for this QR's scheme (match-if-any).
+        # Destination types this scan may decrypt.
+        # ERC-681 sets one type from the chain id and token contract. Bitcoin sets bitcoin_address.
         # Empty when the QR has no secret-key instruction.
         self.expected_secret_key_types: List[DestinationType] = []
 
@@ -133,12 +172,14 @@ class QRParser:
             return
 
         scheme = uri.scheme.lower()
-        secret_key_family = SECRET_KEY_URI_FAMILIES.get(scheme)
-        if secret_key_family is not None:
-            dest = _get_destination(text)
-            if dest is not None:
-                self.destinations.append(QrDestination(value=dest, type=None, secret_key=True))
-                self.expected_secret_key_types = list(secret_key_family)
+        if scheme == "ethereum":
+            transfer = _parse_erc681(text)
+            if transfer is None:
+                self.destinations.append(QrDestination(value=text))
+                return
+            destination_type, address = transfer
+            self.destinations.append(QrDestination(value=address, type=destination_type, secret_key=True))
+            self.expected_secret_key_types = [destination_type]
             query_params = _parse_query_string(_query_from_text(text))
             if "branta_id" in query_params:
                 self.on_chain_encryption_text = query_params["branta_id"]

@@ -13,7 +13,7 @@ import pytest
 from branta.enums import BrantaEnvironment, DestinationType, VerifyStatus
 from branta.models import AddPaymentResult, Payment, VerifyResult
 from branta.builder import PaymentBuilder
-from tests.live_helpers import make_service, pol_uri
+from tests.live_helpers import make_service, transfer_uri
 
 pytestmark = [
     pytest.mark.skipif(
@@ -74,10 +74,10 @@ async def test_staging_live_combos():
             enc_usdt = d.value
         elif d.type == DestinationType.UsdcPolygon:
             enc_usdc = d.value
-    usdt_match = await must_status(pol_uri(usdt, enc_usdt, added.secret), VerifyStatus.Match)
+    usdt_match = await must_status(transfer_uri(DestinationType.UsdtPolygon, usdt, enc_usdt, added.secret), VerifyStatus.Match)
     assert len(usdt_match.matched_destinations) == 1
     assert usdt_match.matched_destinations[0].type == DestinationType.UsdtPolygon
-    usdc_match = await must_status(pol_uri(usdc, enc_usdc, added.secret), VerifyStatus.Match)
+    usdc_match = await must_status(transfer_uri(DestinationType.UsdcPolygon, usdc, enc_usdc, added.secret), VerifyStatus.Match)
     assert len(usdc_match.matched_destinations) == 1
     assert usdc_match.matched_destinations[0].type == DestinationType.UsdcPolygon
 
@@ -89,8 +89,15 @@ async def test_staging_live_combos():
         .build()
     )
     enc = added.payment.destinations[0].value
-    both = await must_status(pol_uri(usdt, enc, added.secret), VerifyStatus.Match)
-    assert len(both.matched_destinations) == 2
+    # Same address under two tokens: each scan binds only the token it names.
+    usdt_scan = await must_status(
+        transfer_uri(DestinationType.UsdtPolygon, usdt, enc, added.secret), VerifyStatus.Match
+    )
+    assert [d.type for d in usdt_scan.matched_destinations] == [DestinationType.UsdtPolygon]
+    usdc_scan = await must_status(
+        transfer_uri(DestinationType.UsdcPolygon, usdt, enc, added.secret), VerifyStatus.Match
+    )
+    assert [d.type for d in usdc_scan.matched_destinations] == [DestinationType.UsdcPolygon]
 
     added = await must_add(
         PaymentBuilder()
@@ -112,16 +119,34 @@ async def test_staging_live_combos():
     )
     assert len(btc_match.matched_destinations) == 1
     assert btc_match.matched_destinations[0].type == DestinationType.BitcoinAddress
-    pol_match = await must_status(pol_uri(usdt, enc_usdt, added.secret), VerifyStatus.Match)
-    assert len(pol_match.matched_destinations) == 1
-    assert pol_match.matched_destinations[0].type == DestinationType.UsdtPolygon
-    await must_status(pol_uri(swap, enc_usdt, added.secret), VerifyStatus.Tampered)
+    polygon_match = await must_status(
+        transfer_uri(DestinationType.UsdtPolygon, usdt, enc_usdt, added.secret), VerifyStatus.Match
+    )
+    assert len(polygon_match.matched_destinations) == 1
+    assert polygon_match.matched_destinations[0].type == DestinationType.UsdtPolygon
+    await must_status(
+        transfer_uri(DestinationType.UsdtPolygon, swap, enc_usdt, added.secret), VerifyStatus.Tampered
+    )
 
     added = await must_add(
         PaymentBuilder().add_destination(usdt, DestinationType.UsdtPolygon).set_ttl(120).build()
     )
     enc = added.payment.destinations[0].value
-    await must_status(pol_uri(usdt.lower(), enc, added.secret), VerifyStatus.Match)
-    await must_status(pol_uri(usdt, enc, "00000000-0000-0000-0000-000000000000"), VerifyStatus.Unknown)
+    await must_status(
+        transfer_uri(DestinationType.UsdtPolygon, usdt.lower(), enc, added.secret), VerifyStatus.Match
+    )
+    await must_status(
+        transfer_uri(DestinationType.UsdtPolygon, usdt, enc, "00000000-0000-0000-0000-000000000000"),
+        VerifyStatus.Unknown,
+    )
     await must_status(usdt, VerifyStatus.Unknown)
-    await must_status(f"pol:{usdt}?value=50&currency=USD", VerifyStatus.Unknown)
+    # A transfer URI with no Branta params is unknown and does not GET.
+    await must_status(
+        "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@137/transfer?address=" + usdt + "&uint256=50000000",
+        VerifyStatus.Unknown,
+    )
+    # The old pol: scheme no longer verifies, even with valid params.
+    await must_status(
+        f"pol:{usdt}?branta_id={quote(enc, safe='')}&branta_secret={quote(added.secret, safe='')}",
+        VerifyStatus.Unknown,
+    )
