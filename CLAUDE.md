@@ -27,10 +27,6 @@ Invariants that break silently. Check them before you change `verify` or `addPay
 
 - `branta/__init__.py` — public export (`BrantaService`, `PaymentBuilder`, `DestinationType`, `BrantaEnvironment`, `VerifyResult`, `BrantaApiOptions`, exceptions)
 - `branta/service.py` — `BrantaService` (encrypt/decrypt around HTTP). `client.py` is the raw HTTP layer; do not call it from consumer code
-- `branta/builder.py` — `PaymentBuilder`
-- `branta/parser.py` — `QRParser` (internal)
-- `branta/encryption.py` — AES-256-GCM
-- `branta/serialization.py` — Guardrail JSON
 - `tests/` — unit tests mock the client; live lookups / multi-rail round-trips / combos run only when `BRANTA_RUN_INTEGRATION=1` (API key required for write tests)
 
 ## Setup
