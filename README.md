@@ -32,7 +32,7 @@ async def main(scanned_or_pasted: str) -> None:
         # Destination was altered. Warn. Do not show a verified card.
         print(result.verify_url)
     elif result.status == VerifyStatus.Incomplete:
-        # 5xx, 429, or unreachable. Tell the user. Do not treat this as unknown.
+        # Branta could not complete the check. Tell the user. Do not block send.
         print(result.verify_url)
     # VerifyStatus.Unknown: not in Branta. Show nothing.
 
@@ -43,8 +43,6 @@ asyncio.run(main("bitcoin:bc1q…?branta_id=…&branta_secret=…"))
 `environment` is `Production` on release and `Staging` everywhere else.
 
 Pass the scanned or pasted text to `verify`. A Bitcoin or EVM stablecoin lookup needs `branta_id` and `branta_secret` in the URI. bolt11, Ark, and silent payments resolve from the value. A bare address is `unknown`. The full rules are on [Status rules](https://developer.branta.pro/setup/send/status-rules), and supported chains and contracts are on [Destination types](https://developer.branta.pro/destination-types).
-
-A 404 is `unknown`. 5xx, 429, no network, or a 30s HTTP timeout is `incomplete`.
 
 ## Receive
 
