@@ -12,7 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 - `verify` now takes EVM USDT and USDC as ERC-681 `ethereum:<token-contract>@<chain-id>/transfer?address=<deposit>&uint256=<amount>`, plus `branta_id` and `branta_secret`. The chain id and token contract select one destination type. `uint256` is not part of the match.
 - A URI that cannot be parsed is `unknown`. `verify` does not raise for it.
-- This release matches `@branta-ops/branta` 4.4.0.
 
 ### Removed
 - **Breaking:** `verify` no longer accepts `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, or `sol:`. These return `unknown` without a lookup. Switch EVM stablecoin QR codes to the ERC-681 form above.
@@ -34,7 +33,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 - Package entry exports only the consumer surface. Rail-family helpers (`SECRET_KEY_URI_FAMILIES`, per-family tuples, `is_secret_key_address_type`, and the former `is_polygon_evm_destination_type`) stay internal — import `DestinationType` from `branta` for POST/verify.
-- This release matches `@branta-ops/branta` 4.3.0.
 
 ### Notes
 - `usdc_ton` is deferred until a platform names a concrete TON USDC jetton.
@@ -51,16 +49,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `verify` of a `pol:` URI binds any Polygon EVM family member whose decrypted address matches (match-if-any).
 - `pol:` parsing does not stamp a token `DestinationType` on the QR address. The scheme maps to the Polygon EVM family for verify; the token still comes from the matched payment destination.
 - `verify` swap-checks only the secret-key rail family that matches the QR scheme, so a payment with both bitcoin and `usdt_polygon` no longer returns `tampered` for a valid single-rail QR.
-- This release matches `@branta-ops/branta` / Branta.NET / branta-go / branta-swift / branta-kotlin 4.2.0.
 
 ## [4.0.1] - 2026-11-01
 
 ### Fixed
 - `verify_url` fragment names and values are percent-encoded, so a crafted id or secret cannot add parameters.
 - `verify()` of a bolt11, Ark, or silent payment is `tampered` when the decrypted plaintext is not the scanned value. Case differences still match.
-
-### Changed
-- This release matches `@branta-ops/branta` 4.0.5.
 
 ## [4.0.0] - 2026-11-01
 
@@ -85,7 +79,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 - `set_description` writes `metadata.description`. The SDK does not POST or GET Guardrail's plaintext `description` field. After metadata decrypt, `payment.description` is lifted from `metadata.description`.
-- This release matches `@branta-ops/branta` 4.0.4.
 
 ## [3.2.5] - 2026-10-29
 
