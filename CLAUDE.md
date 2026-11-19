@@ -46,5 +46,5 @@ pip install -e ".[dev]"
 
 - Async throughout — `BrantaService` and `BrantaClient` methods are `async def`.
 - Python snake_case for public attributes and methods.
-- `BrantaService` takes one `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`). Inject `client`, `aes_encryption`, and `secret_generator` as keyword arguments in tests.
+- `BrantaService` takes one `BrantaApiOptions` (`environment`, `api_key`, `hmac_secret`). `hmac_secret` signs `POST /v2/payments` for platforms with Require HMAC on; it is not deprecated. Inject `client`, `aes_encryption`, and `secret_generator` as keyword arguments in tests.
 - The public API is whatever `branta/__init__.py` exports. The rail table (`EVM_TOKEN_RAILS`, `evm_token_type`) and `is_secret_key_address_type` stay internal.
