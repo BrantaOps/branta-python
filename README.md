@@ -72,6 +72,20 @@ asyncio.run(main())
 
 `add_payment` accepts the types on [Destination types](https://developer.branta.pro/destination-types). Pass the type for stablecoins. A bare address is not auto-detected. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
 
+### HMAC signing
+
+If Branta enabled Require HMAC on your platform, create a Secret in Guardrail and set it as `hmac_secret`. The service signs each `add_payment`. Keep it server-side. See [HMAC signing](https://developer.branta.pro/setup/receive/hmac-signing).
+
+```python
+service = BrantaService(
+    BrantaApiOptions(
+        environment=BrantaEnvironment.Production,
+        api_key="<api-key>",
+        hmac_secret="<secret>",
+    )
+)
+```
+
 ## Per-call options
 
 `verify`, `add_payment`, and `is_api_key_valid` take an optional `BrantaApiOptions` (`environment`, `api_key`) that overrides the constructor for that call.

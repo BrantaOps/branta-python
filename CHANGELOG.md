@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documentation
+- `hmac_secret` is documented. It signs `add_payment` for platforms with Require HMAC on. The README links to the HMAC signing docs.
+
 ## [4.4.0] - 2026-11-17
 
 ### Added
@@ -108,7 +113,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [3.2.0] - 2026-06-26
 
 ### Added
-- `PaymentBuilder.set_child_platform(name, logo_url, logo_light_url)` — allows master-switch platforms to associate a child platform with a payment on POST
+- `PaymentBuilder.set_child_platform(name, logo_url, logo_light_url)` — allows shared-key platforms to associate a child platform with a payment on POST
 - `Payment.child_platform` field (optional `Platform`) to hold the child platform data before submission
 - Removed tracked `__pycache__` files and ensured they are covered by `.gitignore`
 
