@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import time
+from importlib.metadata import PackageNotFoundError, version as _package_version
 from typing import List, Optional
 from urllib.parse import quote, urlparse
 
@@ -33,6 +34,17 @@ _STATUS_TEXT = {
 # Default wall-clock timeout for every HTTP call (GET, POST, health-check).
 HTTP_TIMEOUT_SECONDS = 30
 _HTTP_TIMEOUT = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
+
+
+def _sdk_header_value() -> Optional[str]:
+    # Version comes from the installed package metadata (pyproject.toml), so it cannot drift.
+    try:
+        return f"python/{_package_version('branta')}"
+    except PackageNotFoundError:
+        return None
+
+
+_SDK_HEADER_VALUE = _sdk_header_value()
 
 
 def _hmac_sha256_hex(secret: str, message: str) -> str:
@@ -97,6 +109,8 @@ class BrantaClient:
         base_url = get_base_url(self._default_options, options)
         headers = self._build_headers(options, require_api_key=True)
         headers["Content-Type"] = "application/json"
+        if _SDK_HEADER_VALUE is not None:
+            headers["X-Branta-SDK"] = _SDK_HEADER_VALUE
         body = json.dumps(payment_to_api(payment), separators=(",", ":"))
 
         self._apply_hmac_headers(headers, base_url, body, options)
