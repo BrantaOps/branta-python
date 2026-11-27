@@ -37,3 +37,19 @@ def test_does_not_export_rail_family_internals():
         "is_secret_key_address_type",
     ):
         assert not hasattr(branta, name), name
+
+
+def test_payment_model_has_brand_and_deprecated_child_platform():
+    import dataclasses
+    import warnings
+
+    from branta import Payment, PaymentBuilder, Platform
+
+    fields = {f.name for f in dataclasses.fields(Payment)}
+    assert {"brand", "child_platform"} <= fields
+    assert Payment(brand=Platform(name="Acme")).brand.name == "Acme"
+    assert callable(PaymentBuilder.set_brand)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        PaymentBuilder().set_brand("Acme")
+    assert callable(PaymentBuilder.set_child_platform)

@@ -1,4 +1,5 @@
 import json
+import warnings
 
 import pytest
 
@@ -80,48 +81,121 @@ class TestPaymentBuilder:
         payment = PaymentBuilder().add_destination("bc1qtest").build()
         assert payment.destinations[0].type is None
 
-    def test_set_child_platform_sets_name(self):
-        payment = PaymentBuilder().add_destination("bc1qtest").set_child_platform("Acme").build()
-        assert payment.child_platform.name == "Acme"
+    def test_set_brand_sets_name(self):
+        payment = PaymentBuilder().add_destination("bc1qtest").set_brand("Acme").build()
+        assert payment.brand.name == "Acme"
 
-    def test_set_child_platform_optional_urls_default_none(self):
-        payment = PaymentBuilder().add_destination("bc1qtest").set_child_platform("Acme").build()
-        assert payment.child_platform.logo_url is None
-        assert payment.child_platform.logo_light_url is None
+    def test_set_brand_optional_urls_default_none(self):
+        payment = PaymentBuilder().add_destination("bc1qtest").set_brand("Acme").build()
+        assert payment.brand.logo_url is None
+        assert payment.brand.logo_light_url is None
 
-    def test_set_child_platform_with_urls(self):
+    def test_set_brand_with_urls(self):
         payment = (
             PaymentBuilder()
             .add_destination("bc1qtest")
-            .set_child_platform("Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/logo-light.png")
+            .set_brand("Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/logo-light.png")
             .build()
         )
-        assert payment.child_platform.logo_url == "https://example.com/logo.png"
-        assert payment.child_platform.logo_light_url == "https://example.com/logo-light.png"
+        assert payment.brand.logo_url == "https://example.com/logo.png"
+        assert payment.brand.logo_light_url == "https://example.com/logo-light.png"
 
-    def test_set_child_platform_returns_builder(self):
+    def test_set_brand_returns_builder(self):
         builder = PaymentBuilder()
-        result = builder.set_child_platform("Acme")
-        assert result is builder
+        assert builder.set_brand("Acme") is builder
 
-    def test_child_platform_serializes_to_api(self):
+    def test_set_brand_does_not_warn_or_touch_deprecated_field(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            payment = PaymentBuilder().add_destination("bc1qtest").set_brand("Acme").build()
+        assert payment.child_platform is None
+
+    def test_brand_serializes_to_api_without_child_platform(self):
         from branta.serialization import payment_to_api
         payment = (
             PaymentBuilder()
             .add_destination("bc1qtest")
-            .set_child_platform("Acme", logo_url="https://example.com/logo.png")
+            .set_brand("Acme", logo_url="https://example.com/logo.png")
             .build()
         )
         api = payment_to_api(payment)
-        assert api["child_platform"]["name"] == "Acme"
-        assert api["child_platform"]["logo_url"] == "https://example.com/logo.png"
-        assert "logo_light_url" not in api["child_platform"]
+        assert api["brand"] == {"name": "Acme", "logo_url": "https://example.com/logo.png"}
+        assert "logo_light_url" not in api["brand"]
+        assert "child_platform" not in api
 
-    def test_no_child_platform_omitted_from_api(self):
+    def test_no_brand_omitted_from_api(self):
         from branta.serialization import payment_to_api
         payment = PaymentBuilder().add_destination("bc1qtest").build()
         api = payment_to_api(payment)
+        assert "brand" not in api
         assert "child_platform" not in api
+
+    def test_set_child_platform_is_deprecated_and_delegates_to_set_brand(self):
+        from branta.serialization import payment_to_api
+        expected = (
+            PaymentBuilder()
+            .add_destination("bc1qtest")
+            .set_brand("Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/l.png")
+            .build()
+        )
+        builder = PaymentBuilder().add_destination("bc1qtest")
+        with pytest.warns(DeprecationWarning, match="Use set_brand / brand"):
+            result = builder.set_child_platform(
+                "Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/l.png"
+            )
+        assert result is builder
+        payment = builder.build()
+        assert payment.brand.name == "Acme"
+        assert payment.child_platform is None
+        # destination ids are random; compare the brand body only
+        assert payment_to_api(payment)["brand"] == payment_to_api(expected)["brand"]
+        assert "child_platform" not in payment_to_api(payment)
+
+    def test_set_child_platform_warning_points_at_the_caller(self):
+        with pytest.warns(DeprecationWarning) as record:
+            PaymentBuilder().set_child_platform("Acme")
+        assert record[0].filename == __file__
+
+    def test_payment_with_only_deprecated_field_serializes_as_brand(self):
+        from branta.models import Payment, Platform
+        from branta.serialization import payment_to_api
+        api = payment_to_api(Payment(child_platform=Platform(name="Old", logo_url="https://example.com/o.png")))
+        assert api["brand"] == {"name": "Old", "logo_url": "https://example.com/o.png"}
+        assert "child_platform" not in api
+
+    def test_brand_wins_over_deprecated_field_when_both_set(self):
+        from branta.models import Payment, Platform
+        from branta.serialization import payment_to_api
+        api = payment_to_api(Payment(brand=Platform(name="New"), child_platform=Platform(name="Old")))
+        assert api["brand"] == {"name": "New"}
+        assert "child_platform" not in api
+
+    def test_parse_brand(self):
+        from branta.serialization import payment_from_api
+        payment = payment_from_api({"destinations": [], "brand": {"name": "New", "logo_url": "https://x/n.png"}})
+        assert payment.brand.name == "New"
+        assert payment.brand.logo_url == "https://x/n.png"
+        assert payment.child_platform == payment.brand
+
+    def test_parse_child_platform_alias(self):
+        from branta.serialization import payment_from_api
+        payment = payment_from_api({"destinations": [], "child_platform": {"name": "Old"}})
+        assert payment.brand.name == "Old"
+        assert payment.child_platform.name == "Old"
+
+    def test_parse_both_brand_wins_and_mirrors(self):
+        from branta.serialization import payment_from_api
+        payment = payment_from_api(
+            {"destinations": [], "brand": {"name": "New"}, "child_platform": {"name": "Old"}}
+        )
+        assert payment.brand.name == "New"
+        assert payment.child_platform.name == "New"
+
+    def test_parse_without_brand_leaves_both_none(self):
+        from branta.serialization import payment_from_api
+        payment = payment_from_api({"destinations": []})
+        assert payment.brand is None
+        assert payment.child_platform is None
 
 
 class TestSerializationDestinationType:

@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `PaymentBuilder.set_brand(name, logo_url, logo_light_url)` and `Payment.brand`. A brand is the payee a shared-key platform tags a payment with.
+
+### Deprecated
+- `PaymentBuilder.set_child_platform` (emits `DeprecationWarning`) and `Payment.child_platform`. Use `set_brand` / `brand`. Both still work and map to `brand`. Responses that carry `child_platform` still parse, and `child_platform` mirrors `brand`.
+
 ### Changed
+- `add_payment` now sends `brand` and never `child_platform`. This requires a Branta server that accepts `brand`.
+- Logo-domain mismatch errors on a brand name the field `brand.logo_url` / `brand.logo_light_url`.
 - `POST /v2/payments` now sends an `X-Branta-SDK` header (language and SDK version). GETs are unchanged.
 
 ### Documentation

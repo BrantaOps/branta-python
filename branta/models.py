@@ -34,8 +34,15 @@ class Payment:
     platform_logo_url: Optional[str] = None
     platform_logo_light_url: Optional[str] = None
     parent_platform: Optional[Platform] = None
+    brand: Optional[Platform] = None
+    # Deprecated: use `brand`. Still read and written for compatibility. It is never sent on the wire.
     child_platform: Optional[Platform] = None
     is_metadata_decrypted: Optional[bool] = None
+
+
+def effective_brand(payment: Payment) -> Optional[Platform]:
+    """`brand` if set, otherwise the deprecated `child_platform`."""
+    return payment.brand if payment.brand is not None else payment.child_platform
 
 
 @dataclass

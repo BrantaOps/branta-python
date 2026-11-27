@@ -101,22 +101,54 @@ async def test_catches_mismatched_parent_platform_logo_light_url() -> None:
         await client.get_payments("value")
 
 
-async def test_catches_mismatched_child_platform_logo_url() -> None:
+async def test_catches_mismatched_child_platform_alias_logo_url() -> None:
     client = client_with_response(
         [{"destinations": DESTINATIONS, "child_platform": {"logo_url": f"{OTHER_ORIGIN}/logo.png"}}]
     )
 
-    with pytest.raises(BrantaPaymentException, match="child_platform.logo_url"):
+    with pytest.raises(BrantaPaymentException, match="brand.logo_url"):
         await client.get_payments("value")
 
 
-async def test_catches_mismatched_child_platform_logo_light_url() -> None:
+async def test_catches_mismatched_child_platform_alias_logo_light_url() -> None:
     client = client_with_response(
         [{"destinations": DESTINATIONS, "child_platform": {"logo_light_url": f"{OTHER_ORIGIN}/logo-light.png"}}]
     )
 
-    with pytest.raises(BrantaPaymentException, match="child_platform.logo_light_url"):
+    with pytest.raises(BrantaPaymentException, match="brand.logo_light_url"):
         await client.get_payments("value")
+
+
+async def test_catches_mismatched_brand_logo_url() -> None:
+    client = client_with_response(
+        [{"destinations": DESTINATIONS, "brand": {"logo_url": f"{OTHER_ORIGIN}/logo.png"}}]
+    )
+
+    with pytest.raises(BrantaPaymentException, match="brand.logo_url"):
+        await client.get_payments("value")
+
+
+async def test_catches_mismatched_brand_logo_light_url() -> None:
+    client = client_with_response(
+        [{"destinations": DESTINATIONS, "brand": {"logo_light_url": f"{OTHER_ORIGIN}/logo-light.png"}}]
+    )
+
+    with pytest.raises(BrantaPaymentException, match="brand.logo_light_url"):
+        await client.get_payments("value")
+
+
+async def test_post_payment_sends_brand_and_never_child_platform() -> None:
+    from branta.models import Destination, Platform
+
+    for payment in (
+        Payment(destinations=[Destination(value="v")], brand=Platform(name="Acme", logo_url=f"{SAME_ORIGIN}/a.png")),
+        Payment(destinations=[Destination(value="v")], child_platform=Platform(name="Acme", logo_url=f"{SAME_ORIGIN}/a.png")),
+    ):
+        client = client_with_response("")
+        await client.post_payment(payment)
+        body = json.loads(client._session.last_body)  # type: ignore[union-attr]
+        assert body["brand"] == {"name": "Acme", "logo_url": f"{SAME_ORIGIN}/a.png"}
+        assert "child_platform" not in body
 
 
 async def test_does_not_throw_when_all_logo_fields_are_same_origin_or_absent() -> None:

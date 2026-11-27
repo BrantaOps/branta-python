@@ -9,7 +9,7 @@ from urllib.parse import quote
 from branta.enums import DestinationType, VerifyStatus, is_secret_key_address_type
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_base_url, get_derived_key_type, to_normalized_hash, to_url_fragment
-from branta.models import AddPaymentResult, Destination, Payment, Platform, VerifyResult
+from branta.models import AddPaymentResult, Destination, Payment, Platform, VerifyResult, effective_brand
 from branta.options import BrantaApiOptions
 from branta.builder import PaymentBuilder
 from branta.client import BrantaClient
@@ -49,11 +49,13 @@ def _copy_platform(platform: Optional[Platform]) -> Optional[Platform]:
 
 
 def _copy_payment(payment: Payment) -> Payment:
+    brand = effective_brand(payment)
     return replace(
         payment,
         destinations=[replace(destination) for destination in payment.destinations],
         parent_platform=_copy_platform(payment.parent_platform),
-        child_platform=_copy_platform(payment.child_platform),
+        brand=_copy_platform(brand),
+        child_platform=_copy_platform(brand),
     )
 
 

@@ -13,7 +13,7 @@ import aiohttp
 
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import get_api_key, get_base_url, get_hmac_secret
-from branta.models import Payment
+from branta.models import Payment, effective_brand
 from branta.options import BrantaApiOptions
 from branta.serialization import payment_from_api, payment_to_api
 
@@ -195,8 +195,6 @@ class BrantaClient:
                 payment.parent_platform.logo_light_url if payment.parent_platform else None,
                 "parent_platform.logo_light_url",
             )
-            check(payment.child_platform.logo_url if payment.child_platform else None, "child_platform.logo_url")
-            check(
-                payment.child_platform.logo_light_url if payment.child_platform else None,
-                "child_platform.logo_light_url",
-            )
+            brand = effective_brand(payment)
+            check(brand.logo_url if brand else None, "brand.logo_url")
+            check(brand.logo_light_url if brand else None, "brand.logo_light_url")

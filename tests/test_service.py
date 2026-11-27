@@ -8,7 +8,7 @@ import pytest
 from branta.enums import EVM_TOKEN_RAILS, BrantaEnvironment, DestinationType, VerifyStatus
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.extensions import to_normalized_hash
-from branta.models import Destination, Payment
+from branta.models import Destination, Payment, Platform
 from branta.options import BrantaApiOptions
 from branta.encryption import AesEncryption
 from branta.service import BrantaService
@@ -375,6 +375,55 @@ class TestAddPayment:
         with pytest.raises(BrantaPaymentException, match="No payment returned"):
             await service(client, [SECRET]).add_payment(payment)
         assert payment.destinations[0].value == ADDRESS
+
+
+    async def test_add_payment_posts_a_copy_carrying_brand_and_leaves_the_caller_unchanged(self):
+        client = FakeClient()
+        payment = Payment(
+            destinations=[Destination(value=ADDRESS, type=DestinationType.BitcoinAddress, id="dest-1")],
+            brand=Platform(name="Acme", logo_url="https://example.com/a.png"),
+        )
+
+        await service(client, [SECRET]).add_payment(payment)
+
+        posted = client.posts[0]
+        assert posted is not payment
+        assert posted.brand == Platform(name="Acme", logo_url="https://example.com/a.png")
+        assert posted.brand is not payment.brand
+        assert payment.brand == Platform(name="Acme", logo_url="https://example.com/a.png")
+        assert payment.child_platform is None
+        assert payment.destinations[0].value == ADDRESS
+
+    async def test_add_payment_normalizes_old_style_child_platform_into_brand_on_the_copy(self):
+        client = FakeClient()
+        payment = Payment(
+            destinations=[Destination(value=ADDRESS, type=DestinationType.BitcoinAddress, id="dest-1")],
+            child_platform=Platform(name="Old"),
+        )
+
+        await service(client, [SECRET]).add_payment(payment)
+
+        posted = client.posts[0]
+        assert posted.brand == Platform(name="Old")
+        assert posted.child_platform == Platform(name="Old")
+        assert posted.brand is not payment.child_platform
+        # The caller's payment is untouched.
+        assert payment.brand is None
+        assert payment.child_platform == Platform(name="Old")
+
+    async def test_add_payment_brand_wins_over_child_platform_on_the_copy(self):
+        client = FakeClient()
+        payment = Payment(
+            destinations=[Destination(value=ADDRESS, type=DestinationType.BitcoinAddress, id="dest-1")],
+            brand=Platform(name="New"),
+            child_platform=Platform(name="Old"),
+        )
+
+        await service(client, [SECRET]).add_payment(payment)
+
+        assert client.posts[0].brand == Platform(name="New")
+        assert client.posts[0].child_platform == Platform(name="New")
+        assert payment.child_platform == Platform(name="Old")
 
 
 USDT_POLYGON = "0x278297528c32eCa01295B0d2135984d3442ec963"
