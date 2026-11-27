@@ -13,6 +13,7 @@ Invariants that break silently. Check them before you change `verify` or `addPay
 - The token is `matchedDestinations[].type`, never the URI scheme.
 - A logo-domain mismatch throws. Every other lookup failure is a status.
 - `addPayment` encrypts a copy and leaves the caller's `Payment` unchanged.
+- The payment POST sends `X-Branta-SDK: <language>/<version>`. A GET never does. [SDK header](https://developer.branta.pro/tech/api/receive#sdk-header)
 - Keep parity with every 4.x Branta SDK. A public method added or changed here is mirrored in each of them.
 
 ## Python specifics
