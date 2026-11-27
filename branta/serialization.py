@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any, Dict, Optional
 
 from branta.enums import DestinationType
-from branta.models import Destination, Payment, Platform
+from branta.models import Destination, Payment, Platform, effective_brand
 
 _DESTINATION_TYPES = {item.value for item in DestinationType}
 
@@ -83,8 +84,9 @@ def payment_to_api(payment: Payment) -> Dict[str, Any]:
         result["platform_logo_url"] = payment.platform_logo_url
     if payment.platform_logo_light_url is not None:
         result["platform_logo_light_url"] = payment.platform_logo_light_url
-    if payment.child_platform is not None:
-        result["child_platform"] = _platform_to_api(payment.child_platform)
+    brand = effective_brand(payment)
+    if brand is not None:
+        result["brand"] = _platform_to_api(brand)
     return result
 
 
@@ -108,9 +110,13 @@ def payment_from_api(raw: Dict[str, Any]) -> Payment:
     parent = raw.get("parent_platform")
     if isinstance(parent, dict):
         payment.parent_platform = _platform_from_api(parent)
-    child = raw.get("child_platform")
-    if isinstance(child, dict):
-        payment.child_platform = _platform_from_api(child)
+    brand_raw = raw.get("brand")
+    if not isinstance(brand_raw, dict):
+        brand_raw = raw.get("child_platform")
+    if isinstance(brand_raw, dict):
+        payment.brand = _platform_from_api(brand_raw)
+        # Mirror into the deprecated field so existing readers keep working.
+        payment.child_platform = replace(payment.brand)
     return payment
 
 

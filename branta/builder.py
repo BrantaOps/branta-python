@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import warnings
 from typing import Optional
 
 from branta.enums import DestinationType
@@ -36,14 +37,24 @@ class PaymentBuilder:
         self._payment.platform_logo_url = platform_logo_url
         return self
 
+    def set_brand(
+        self,
+        name: str,
+        logo_url: Optional[str] = None,
+        logo_light_url: Optional[str] = None,
+    ) -> "PaymentBuilder":
+        self._payment.brand = Platform(name=name, logo_url=logo_url, logo_light_url=logo_light_url)
+        return self
+
     def set_child_platform(
         self,
         name: str,
         logo_url: Optional[str] = None,
         logo_light_url: Optional[str] = None,
     ) -> "PaymentBuilder":
-        self._payment.child_platform = Platform(name=name, logo_url=logo_url, logo_light_url=logo_light_url)
-        return self
+        """Deprecated: use `set_brand`."""
+        warnings.warn("set_child_platform is deprecated. Use set_brand / brand.", DeprecationWarning, stacklevel=2)
+        return self.set_brand(name, logo_url, logo_light_url)
 
     def build(self) -> Payment:
         return self._payment

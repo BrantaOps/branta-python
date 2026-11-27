@@ -72,6 +72,21 @@ asyncio.run(main())
 
 `add_payment` accepts the types on [Destination types](https://developer.branta.pro/destination-types). Pass the type for stablecoins. A bare address is not auto-detected. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
 
+### Brand
+
+Shared-key platforms can tag a payment with the payee's brand: a name plus optional logo source URLs.
+
+```python
+payment = (
+    service.create_payment_builder()
+    .add_destination("bc1q…", DestinationType.BitcoinAddress)
+    .set_brand("Acme", logo_url="https://example.com/logo.png", logo_light_url="https://example.com/logo-light.png")
+    .build()
+)
+```
+
+`add_payment` sends it as `brand`, which needs a Branta server that accepts that field. `PaymentBuilder.set_child_platform` and `Payment.child_platform` are deprecated. They still work, `set_child_platform` emits a `DeprecationWarning`, and both map to `brand`.
+
 ### HMAC signing
 
 If Branta enabled Require HMAC on your platform, create a Secret in Guardrail and set it as `hmac_secret`. The service signs each `add_payment`. Keep it server-side. See [HMAC signing](https://developer.branta.pro/setup/receive/hmac-signing).
