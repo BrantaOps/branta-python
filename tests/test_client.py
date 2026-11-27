@@ -8,6 +8,7 @@ from branta.enums import BrantaEnvironment
 from branta.exceptions import BrantaPaymentException, IncompleteError
 from branta.options import BrantaApiOptions
 from branta.client import BrantaClient
+from branta.models import Payment
 
 # Matches BrantaEnvironment.Localhost.
 SAME_ORIGIN = "http://localhost:3000"
@@ -39,13 +40,18 @@ class _FakeSession:
     def __init__(self, response: _FakeResponse) -> None:
         self._response = response
         self.last_timeout = None
+        self.last_headers: dict | None = None
+        self.last_body: object = None
 
     def get(self, url: str, headers: dict | None = None, **kwargs: object) -> _FakeResponse:
         self.last_timeout = kwargs.get("timeout")
+        self.last_headers = headers
         return self._response
 
     def post(self, url: str, headers: dict | None = None, data: object = None, **kwargs: object) -> _FakeResponse:
         self.last_timeout = kwargs.get("timeout")
+        self.last_headers = headers
+        self.last_body = data
         return self._response
 
 
@@ -169,3 +175,61 @@ async def test_get_payments_timeout_is_incomplete() -> None:
     client = BrantaClient(default_options=options, session=_TimeoutSession())  # type: ignore[arg-type]
     with pytest.raises(IncompleteError):
         await client.get_payments("value")
+
+
+def _manifest_version() -> str:
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert match is not None
+    return match.group(1)
+
+
+def _payment() -> Payment:
+    from branta.models import Destination
+
+    return Payment(destinations=[Destination(value="value")])
+
+
+async def test_post_payment_sends_sdk_header_with_manifest_version() -> None:
+    client = client_with_response("")
+
+    await client.post_payment(_payment())
+
+    session = client._session
+    assert session.last_headers["X-Branta-SDK"] == f"python/{_manifest_version()}"  # type: ignore[union-attr]
+    assert "X-Branta-SDK" not in str(session.last_body)  # type: ignore[union-attr]
+
+
+async def test_post_payment_sdk_header_is_not_part_of_hmac_signature_input() -> None:
+    session = _FakeSession(_FakeResponse(200, ""))
+    options = BrantaApiOptions(environment=BrantaEnvironment.Localhost, api_key="key", hmac_secret="secret")
+    client = BrantaClient(default_options=options, session=session)  # type: ignore[arg-type]
+
+    await client.post_payment(_payment())
+
+    import hashlib
+    import hmac
+
+    headers = session.last_headers or {}
+    message = f"POST|{SAME_ORIGIN}/v2/payments|{session.last_body}|{headers['X-HMAC-Timestamp']}"
+    expected = hmac.new(b"secret", message.encode(), hashlib.sha256).hexdigest()
+    assert headers["X-HMAC-Signature"] == expected
+
+
+async def test_get_payments_does_not_send_sdk_header() -> None:
+    client = client_with_response([])
+
+    await client.get_payments("value")
+
+    assert "X-Branta-SDK" not in client._session.last_headers  # type: ignore[union-attr]
+
+
+async def test_is_api_key_valid_does_not_send_sdk_header() -> None:
+    client = client_with_response("")
+
+    await client.is_api_key_valid()
+
+    assert "X-Branta-SDK" not in client._session.last_headers  # type: ignore[union-attr]
